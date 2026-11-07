@@ -84,6 +84,7 @@ export class FfmpegService {
   private loadPromise: Promise<EngineLoadStatus> | null = null;
   private capabilitiesPromise: Promise<EncoderCapabilities> | null = null;
   private status: EngineLoadStatus | null = null;
+  private capabilityLog: string[] = [];
 
   constructor() {
     this.ffmpeg.on("log", ({ message }) => {
@@ -100,6 +101,11 @@ export class FfmpegService {
 
   get queueSize(): number {
     return this.queue.size;
+  }
+
+  /** Raw `ffmpeg -encoders` lines captured by the last capability probe. */
+  get lastCapabilityLog(): readonly string[] {
+    return this.capabilityLog;
   }
 
   async load(): Promise<EngineLoadStatus> {
@@ -270,6 +276,7 @@ export class FfmpegService {
         const startLogIndex = this.logBuffer.length;
         await this.ffmpeg.exec(["-hide_banner", "-encoders"], -1, { signal });
         const lines = this.logBuffer.slice(startLogIndex);
+        this.capabilityLog = lines;
         return parseEncoderListing(lines, this.status?.multithreaded ?? false);
       })
       .promise;
