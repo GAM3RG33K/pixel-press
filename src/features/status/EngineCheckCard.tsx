@@ -1,8 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Loader2, Play } from "lucide-react";
+import { CheckCircle2, Loader2, Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { codecFallbackNotice, uniqueFallbackNotices } from "@/lib/ffmpeg/plan";
 import type { EncoderCapabilities } from "@/types/media";
+
+import { CodecFallbackNotice } from "./CodecFallbackNotice";
 
 type CheckState =
   | { status: "idle" }
@@ -84,13 +87,18 @@ export function EngineCheckCard() {
           <Badge tone={state.capabilities.libvpxVp9 ? "ok" : "warn"}>
             VP9 {state.capabilities.libvpxVp9 ? "available" : "missing"}
           </Badge>
-          {!state.capabilities.libx265 ? (
-            <span className="inline-flex items-center gap-1.5 text-warning">
-              <AlertTriangle className="size-4" aria-hidden />
-              H.265 will fall back to H.264 with a notice.
-            </span>
-          ) : null}
         </div>
+      ) : null}
+
+      {state.status === "ready" ? (
+        <CodecFallbackNotice
+          notices={uniqueFallbackNotices(
+            [codecFallbackNotice("h265", state.capabilities)].filter(
+              (notice): notice is NonNullable<typeof notice> =>
+                Boolean(notice),
+            ),
+          )}
+        />
       ) : null}
 
       {state.status === "error" ? (

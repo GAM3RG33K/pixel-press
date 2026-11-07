@@ -58,10 +58,20 @@ export interface EncodeVariant {
   requestedCodec: TargetCodec;
   /** Codec actually used after capability checks. */
   actualCodec: TargetCodec;
-  ffmpegArgs: string[];
-  estimatedSizeBytes: number;
+  crf: number;
+  preset?: string;
+  width?: number;
+  height?: number;
+  scaleFilter?: string;
+  fps?: number;
   stripAudio: boolean;
   generatePoster: boolean;
+  estimatedSizeBytes: number;
+  /**
+   * Full FFmpeg args, built by the encode layer once sandbox paths are known.
+   * Never build these before `applyPlanFallbacks` has resolved `actualCodec`.
+   */
+  ffmpegArgs?: string[];
 }
 
 export interface CompressionPlan {

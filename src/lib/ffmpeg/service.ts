@@ -6,9 +6,10 @@ import type {
   EncoderCapabilities,
   ProbeResult,
   ProgressSample,
+  TargetCodec,
 } from "@/types/media";
 
-import { buildProbeArgs } from "./command-builder";
+import { buildEncodeArgs, buildProbeArgs } from "./command-builder";
 import { resolveCoreSource, type FfmpegCoreSource } from "./core-config";
 import { parseEncoderListing } from "./encoder-inventory";
 import { parseFfprobeJson } from "./ffprobe-parser";
@@ -32,7 +33,16 @@ export interface EncodeOptions {
   input: Blob | File | Uint8Array;
   inputFileName: string;
   outputFileName: string;
-  args: string[];
+  codec: TargetCodec;
+  crf: number;
+  preset?: string;
+  width?: number;
+  height?: number;
+  scaleFilter?: string;
+  fps?: number;
+  stripAudio?: boolean;
+  faststart?: boolean;
+  extraArgs?: string[];
   durationSeconds: number;
   onProgress?: (event: EncodeProgressEvent) => void;
   signal?: AbortSignal;
@@ -42,6 +52,40 @@ export interface EncodeResult {
   data: Uint8Array;
   outputFileName: string;
   durationMs: number;
+  log: string[];
+}
+
+export interface RunInput {
+  /** Logical file name; sanitized before it becomes a sandbox path. */
+  fileName: string;
+  data: Blob | File | Uint8Array;
+}
+
+export interface RunPaths {
+  /** Sandbox paths of `inputs`, in the same order. */
+  inputPaths: string[];
+  /** Sandbox path of the output file when `outputFileName` is set. */
+  outputPath?: string;
+}
+
+export interface RunRequest {
+  inputs: RunInput[];
+  /** Builds the full FFmpeg argument list from resolved sandbox paths. */
+  buildArgs: (paths: RunPaths) => string[];
+  /** When set, the file at `paths.outputPath` is read back into `data`. */
+  outputFileName?: string;
+  /** Enables percent progress when the input duration is known. */
+  durationSeconds?: number;
+  onProgress?: (event: EncodeProgressEvent) => void;
+  signal?: AbortSignal;
+}
+
+export interface RunResult {
+  /** Output bytes when `outputFileName` was supplied. */
+  data?: Uint8Array;
+  outputFileName?: string;
+  durationMs: number;
+  exitCode: number;
   log: string[];
 }
 
@@ -66,7 +110,10 @@ function isUint8Array(value: unknown): value is Uint8Array {
 async function toInputData(
   input: Blob | File | Uint8Array,
 ): Promise<Uint8Array> {
-  if (input instanceof Uint8Array) return input;
+  // `writeFile` transfers the underlying ArrayBuffer to the worker, which
+  // detaches the caller's view. Copy so callers can reuse the same bytes for
+  // multiple jobs (e.g. a reference clip in a benchmark).
+  if (input instanceof Uint8Array) return Uint8Array.from(input);
   return fetchFile(input);
 }
 
@@ -108,12 +155,21 @@ export class FfmpegService {
     return this.capabilityLog;
   }
 
-  async load(): Promise<EngineLoadStatus> {
+  /** Most recent FFmpeg log lines, for diagnostics and hang reports. */
+  get logTail(): readonly string[] {
+    return this.logBuffer.slice(-80);
+  }
+
+  async load(
+    options: { forceSingleThreaded?: boolean } = {},
+  ): Promise<EngineLoadStatus> {
     if (this.loadPromise) return this.loadPromise;
 
     this.loadPromise = (async () => {
       const preferMultithreaded =
-        getIsolationState() === "isolated" && supportsSharedArrayBuffer();
+        !options.forceSingleThreaded &&
+        getIsolationState() === "isolated" &&
+        supportsSharedArrayBuffer();
 
       if (preferMultithreaded) {
         try {
@@ -177,18 +233,20 @@ export class FfmpegService {
       });
 
       try {
+        // `ffprobe` in the WASM core reports a non-zero code even on success
+        // (observed with @ffmpeg/core 0.12.10), so the output file is the
+        // source of truth; a missing/invalid file still throws.
         const code = await this.ffmpeg.ffprobe(
           [...buildProbeArgs(inputPath), "-o", outputPath],
           -1,
           { signal },
         );
-        if (code !== 0) {
-          throw new Error(`ffprobe failed with exit code ${code}`);
-        }
 
         const raw = await this.ffmpeg.readFile(outputPath, "utf8", { signal });
         if (!isUint8Array(raw) && typeof raw !== "string") {
-          throw new Error("ffprobe returned an unexpected payload");
+          throw new Error(
+            `ffprobe returned an unexpected payload (exit code ${code})`,
+          );
         }
         const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw);
         return {
@@ -202,22 +260,36 @@ export class FfmpegService {
     }, options.signal ? { signal: options.signal } : {}).promise;
   }
 
-  async encode(options: EncodeOptions): Promise<EncodeResult> {
+  /**
+   * Runs an arbitrary FFmpeg command against one or more inputs.
+   *
+   * Inputs are written into the sandbox and their resolved paths are handed to
+   * `buildArgs`, so callers never guess at temporary file names. Use this for
+   * multi-input operations such as SSIM comparison as well as one-off encodes.
+   */
+  async run(options: RunRequest): Promise<RunResult> {
     return this.queue.add(async (signal) => {
       await this.load();
 
       const suffix = randomSuffix();
-      const inputPath = `/in-${suffix}-${sanitizeFileName(options.inputFileName)}`;
-      const outputPath = `/out-${suffix}-${sanitizeFileName(options.outputFileName)}`;
+      const inputPaths = options.inputs.map(
+        (input, index) =>
+          `/in-${suffix}-${index}-${sanitizeFileName(input.fileName)}`,
+      );
+      const outputPath = options.outputFileName
+        ? `/out-${suffix}-${sanitizeFileName(options.outputFileName)}`
+        : undefined;
+
       const startLogIndex = this.logBuffer.length;
       const startedAt = performance.now();
+      const durationSeconds = options.durationSeconds ?? 0;
 
       const onLog = ({ message }: { message: string }) => {
         const sample = parseProgressLine(message);
         if (!sample) return;
         const progress =
-          options.durationSeconds > 0
-            ? percentFromTime(sample.timeSeconds, options.durationSeconds)
+          durationSeconds > 0
+            ? percentFromTime(sample.timeSeconds, durationSeconds)
             : 0;
         options.onProgress?.({ progress, sample });
       };
@@ -231,40 +303,113 @@ export class FfmpegService {
       this.ffmpeg.on("log", onLog);
       this.ffmpeg.on("progress", onProgress);
 
-      await this.ffmpeg.writeFile(inputPath, await toInputData(options.input), {
-        signal,
-      });
-
       try {
-        const code = await this.ffmpeg.exec(
-          [...options.args.slice(0, -1), outputPath],
-          -1,
-          { signal },
+        await Promise.all(
+          options.inputs.map(async (input, index) => {
+            const path = inputPaths[index];
+            if (!path) throw new Error("missing input path");
+            await this.ffmpeg.writeFile(path, await toInputData(input.data), {
+              signal,
+            });
+          }),
         );
-        if (code !== 0) {
-          throw new Error(`ffmpeg exited with code ${code}`);
+
+        const args = options.buildArgs({
+          inputPaths,
+          ...(outputPath !== undefined ? { outputPath } : {}),
+        });
+
+        const exitCode = await this.ffmpeg.exec(args, -1, { signal });
+        const log = this.logBuffer.slice(startLogIndex);
+
+        if (exitCode !== 0) {
+          throw new Error(`ffmpeg exited with code ${exitCode}`);
         }
 
-        const data = await this.ffmpeg.readFile(outputPath, undefined, {
-          signal,
-        });
-        if (!isUint8Array(data)) {
-          throw new Error("ffmpeg returned a non-binary payload");
+        let data: Uint8Array | undefined;
+        if (outputPath) {
+          const raw = await this.ffmpeg.readFile(outputPath, undefined, {
+            signal,
+          });
+          if (!isUint8Array(raw)) {
+            throw new Error("ffmpeg returned a non-binary payload");
+          }
+          data = raw;
         }
 
         return {
-          data,
-          outputFileName: options.outputFileName,
+          ...(data !== undefined ? { data } : {}),
+          ...(options.outputFileName !== undefined
+            ? { outputFileName: options.outputFileName }
+            : {}),
           durationMs: Math.round(performance.now() - startedAt),
-          log: this.logBuffer.slice(startLogIndex),
+          exitCode,
+          log,
         };
       } finally {
         this.ffmpeg.off("log", onLog);
         this.ffmpeg.off("progress", onProgress);
-        await this.ffmpeg.deleteFile(inputPath).catch(() => undefined);
-        await this.ffmpeg.deleteFile(outputPath).catch(() => undefined);
+        await Promise.all(
+          inputPaths.map((path) =>
+            this.ffmpeg.deleteFile(path).catch(() => undefined),
+          ),
+        );
+        if (outputPath) {
+          await this.ffmpeg.deleteFile(outputPath).catch(() => undefined);
+        }
       }
     }, options.signal ? { signal: options.signal } : {}).promise;
+  }
+
+  async encode(options: EncodeOptions): Promise<EncodeResult> {
+    const result = await this.run({
+      inputs: [{ fileName: options.inputFileName, data: options.input }],
+      outputFileName: options.outputFileName,
+      durationSeconds: options.durationSeconds,
+      ...(options.onProgress !== undefined
+        ? { onProgress: options.onProgress }
+        : {}),
+      ...(options.signal !== undefined ? { signal: options.signal } : {}),
+      buildArgs: ({ inputPaths, outputPath }) => {
+        const inputPath = inputPaths[0];
+        if (!inputPath || !outputPath) {
+          throw new Error("encode requires one input and one output path");
+        }
+        return buildEncodeArgs({
+          inputPath,
+          outputPath,
+          codec: options.codec,
+          crf: options.crf,
+          ...(options.preset !== undefined ? { preset: options.preset } : {}),
+          ...(options.width !== undefined ? { width: options.width } : {}),
+          ...(options.height !== undefined ? { height: options.height } : {}),
+          ...(options.scaleFilter !== undefined
+            ? { scaleFilter: options.scaleFilter }
+            : {}),
+          ...(options.fps !== undefined ? { fps: options.fps } : {}),
+          ...(options.stripAudio !== undefined
+            ? { stripAudio: options.stripAudio }
+            : {}),
+          ...(options.faststart !== undefined
+            ? { faststart: options.faststart }
+            : {}),
+          ...(options.extraArgs !== undefined
+            ? { extraArgs: options.extraArgs }
+            : {}),
+        });
+      },
+    });
+
+    if (!result.data) {
+      throw new Error("ffmpeg did not return output data");
+    }
+
+    return {
+      data: result.data,
+      outputFileName: options.outputFileName,
+      durationMs: result.durationMs,
+      log: result.log,
+    };
   }
 
   async getCapabilities(): Promise<EncoderCapabilities> {
