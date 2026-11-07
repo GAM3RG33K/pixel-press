@@ -1,0 +1,49 @@
+# Allowlist: ignore everything at the top level, then re-include only
+# app source and open-source project files.
+/*
+
+# Open-source project files
+!/.gitignore
+!/LICENSE
+!/README.md
+!/CONTRIBUTING.md
+
+# App source and config
+!/src/
+!/public/
+!/scripts/
+!/tests/
+!/e2e/
+!/index.html
+!/package.json
+!/bun.lock
+!/bunfig.toml
+!/tsconfig*.json
+!/vite.config.ts
+!/vitest.config.ts
+!/playwright.config.ts
+!/tailwind.config.*
+!/postcss.config.*
+!/components.json
+!/eslint.config.*
+!/.prettierrc*
+!/.editorconfig
+!/.env.example
+
+# Never commit, even inside allowed folders
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.DS_Store
+*.tsbuildinfo
+.test-assets/
+playwright-report/
+test-results/
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+!/public/**/*.webm
