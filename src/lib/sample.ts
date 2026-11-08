@@ -6,7 +6,7 @@
  */
 
 export const SAMPLE_CLIP_URL =
-  "https://upload.wikimedia.org/wikipedia/commons/transcoded/2/21/Big_Buck_Bunny_small.ogv/Big_Buck_Bunny_small.ogv.360p.webm";
+  "https://upload.wikimedia.org/wikipedia/commons/3/3b/Big_Buck_Bunny_extract.ogv";
 
 export async function fetchSampleClip(): Promise<File> {
   const response = await fetch(SAMPLE_CLIP_URL, { mode: 'cors' });

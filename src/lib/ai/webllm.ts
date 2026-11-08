@@ -134,6 +134,36 @@ let enginePromise: Promise<WebLlmLib | null> | null = null;
 const engines = new Map<string, unknown>();
 
 /**
+ * Check whether a model is cached by WebLLM's own cache (OPFS/IndexedDB).
+ * Returns false on any failure (e.g., WebGPU unavailable).
+ */
+export async function isModelCached(modelId: RegisteredModelId): Promise<boolean> {
+  try {
+    const lib = (await import('@mlc-ai/web-llm')) as unknown as WebLlmLib;
+    return await lib.hasModelInCache(getWebllmId(modelId));
+  } catch (error) {
+    console.warn('[webllm] hasModelInCache failed', error);
+    return false;
+  }
+}
+
+/**
+ * Delete a model from WebLLM's cache.
+ */
+export async function deleteModelFromCache(modelId: RegisteredModelId): Promise<boolean> {
+  try {
+    const lib = (await import('@mlc-ai/web-llm')) as unknown as {
+      deleteModelAllInfoInCache: (id: string) => Promise<void>;
+    };
+    await lib.deleteModelAllInfoInCache(getWebllmId(modelId));
+    return true;
+  } catch (error) {
+    console.warn('[webllm] deleteModelAllInfoInCache failed', error);
+    return false;
+  }
+}
+
+/**
  * Try to load the WebLLM library and engine. Returns null when unavailable
  * (e.g., WebGPU unsupported, model not downloaded, package missing).
  */

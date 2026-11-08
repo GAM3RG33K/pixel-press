@@ -9,8 +9,7 @@ import {
   type AIMode,
   type UserPreferences,
 } from "@/lib/settings";
-import { modelManager } from "@/lib/model-manager";
-import { downloadModel } from "@/lib/ai/webllm";
+import { downloadModel, isModelCached, deleteModelFromCache } from "@/lib/ai/webllm";
 import { cn } from "@/lib/utils";
 
 const PREF_OPTIONS: { id: AIMode; title: string; body: string; badge?: string }[] = [
@@ -45,14 +44,28 @@ export function AiSettingsCard() {
   const [selected, setSelected] = useState<AIMode>('rule-engine');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [modelCached, setModelCached] = useState<{ smollm2?: boolean; qwen2?: boolean }>({});
 
   useEffect(() => {
     loadPreferences().then((loaded) => {
       setPrefs(loaded);
       setSelected(loaded.aiMode);
     });
+    refreshCacheStates();
   }, []);
+
+  const modelCachedFor = (mode: AIMode): boolean =>
+    mode === 'smollm2-360m' ? Boolean(modelCached.smollm2) : mode === 'qwen2-0.5b' ? Boolean(modelCached.qwen2) : false;
+
+  const refreshCacheStates = async () => {
+    const [smol, qwen] = await Promise.all([
+      isModelCached('smollm2-360m'),
+      isModelCached('qwen2-0.5b'),
+    ]);
+    setModelCached({ smollm2: smol, qwen2: qwen });
+  };
 
   const setMode = async (mode: AIMode) => {
     setSelected(mode);
@@ -60,24 +73,30 @@ export function AiSettingsCard() {
     await savePreferences({ aiMode: mode });
     setStatus(mode === 'rule-engine' ? 'Rule Mode enabled.' : 'AI model preference saved (download happens on demand).');
     window.setTimeout(() => setStatus(null), 1500);
+    if (mode !== 'rule-engine') {
+      void refreshCacheStates();
+    }
   };
 
   const handleCheckModels = async () => {
     setChecking(true);
-    setStatus('Checking model cache…');
-    const smolState = await modelManager.getModelState('smollm2-360m');
-    const qwenState = await modelManager.getModelState('qwen2-0.5b');
-    setStatus(`SmolLM2-360M: ${smolState} · Qwen2.5-0.5B: ${qwenState}`);
+    setStatus('Checking WebLLM cache…');
+    const smol = await isModelCached('smollm2-360m');
+    const qwen = await isModelCached('qwen2-0.5b');
+    setModelCached({ smollm2: smol, qwen2: qwen });
+    setStatus(`SmolLM2-360M: ${smol ? 'cached' : 'not cached'} · Qwen2.5-0.5B: ${qwen ? 'cached' : 'not cached'}`);
     setChecking(false);
     window.setTimeout(() => setStatus(null), 2500);
   };
 
   const handleDeleteCached = async () => {
-    setChecking(true);
-    await modelManager.deleteModel('smollm2-360m');
-    await modelManager.deleteModel('qwen2-0.5b');
-    setStatus('Cached model weights removed.');
-    setChecking(false);
+    setIsDeleting(true);
+    setStatus('Deleting cached models…');
+    const okSmol = await deleteModelFromCache('smollm2-360m');
+    const okQwen = await deleteModelFromCache('qwen2-0.5b');
+    setModelCached({ smollm2: !okSmol ? (modelCached.smollm2 ?? true) : false, qwen2: !okQwen ? (modelCached.qwen2 ?? true) : false });
+    setStatus(`Removed: ${[okSmol ? 'SmolLM2' : null, okQwen ? 'Qwen2.5' : null].filter(Boolean).join(' · ')}`.trim() || 'Model cache clear done.');
+    setIsDeleting(false);
     window.setTimeout(() => setStatus(null), 2500);
   };
 
@@ -157,41 +176,73 @@ export function AiSettingsCard() {
       </div>
 
       {selected !== 'rule-engine' ? (
-        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-[11px] text-warning">
-          <span className="font-medium">Model download required.</span>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={async () => {
-              setIsDownloading(true);
-              setStatus('Downloading model to browser cache…');
-              setDownloadProgress(0);
-              const result = await downloadModel(selected as 'smollm2-360m' | 'qwen2-0.5b', ({ progress, text }) => {
-                setDownloadProgress(progress);
-                setStatus(text);
-              });
-              setIsDownloading(false);
-              setDownloadProgress(null);
-              if (result.ok) {
-                setStatus('Model cached and ready.');
-              } else {
-                setStatus(`Download failed: ${result.error ?? 'unknown error'}`);
-              }
-              window.setTimeout(() => setStatus(null), 2500);
-            }}
-            disabled={isDownloading}
-          >
-            {isDownloading ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-            ) : (
-              <Download className="size-4" aria-hidden />
-            )}
-            {isDownloading
-              ? downloadProgress !== null
-                ? `Downloading… ${Math.round(downloadProgress * 100)}%`
-                : 'Starting download…'
-              : `Download ${PREF_OPTIONS.find((o) => o.id === selected)?.title.split(' ')[0] ?? 'model'}`}
-          </Button>
+        <div className={cn(
+          "mt-3 flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 text-[11px]",
+          modelCachedFor(selected)
+            ? "border-success/30 bg-success/5 text-success"
+            : "border-warning/30 bg-warning/5 text-warning",
+        )}>
+          <span className="font-medium">
+            {modelCachedFor(selected)
+              ? "Model cached and ready."
+              : "Model not downloaded yet."}
+          </span>
+          {modelCachedFor(selected) ? (
+            <>
+              <span className="text-[11px] opacity-90">WebLLM verified in cache.</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  setIsDeleting(true);
+                  const ok = await deleteModelFromCache(selected as 'smollm2-360m' | 'qwen2-0.5b');
+                  await refreshCacheStates();
+                  setStatus(ok ? 'Model removed from cache.' : 'Could not delete model.');
+                  setIsDeleting(false);
+                  window.setTimeout(() => setStatus(null), 2000);
+                }}
+                disabled={isDeleting}
+              >
+                {isDeleting ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Trash2 className="size-4" aria-hidden />}
+                Remove model
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                setIsDownloading(true);
+                setStatus('Downloading model to browser cache…');
+                setDownloadProgress(0);
+                const result = await downloadModel(selected as 'smollm2-360m' | 'qwen2-0.5b', ({ progress, text }) => {
+                  setDownloadProgress(progress);
+                  setStatus(text);
+                });
+                setIsDownloading(false);
+                setDownloadProgress(null);
+                if (result.ok) {
+                  await refreshCacheStates();
+                  setStatus('Model cached and ready.');
+                } else {
+                  setStatus(`Download failed: ${result.error ?? 'unknown error'}`);
+                }
+                window.setTimeout(() => setStatus(null), 2500);
+              }}
+              disabled={isDownloading}
+            >
+              {isDownloading ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <Download className="size-4" aria-hidden />
+              )}
+              {isDownloading
+                ? downloadProgress !== null
+                  ? `Downloading… ${Math.round(downloadProgress * 100)}%`
+                  : 'Starting download…'
+                : `Download ${PREF_OPTIONS.find((o) => o.id === selected)?.title.split(' ')[0] ?? 'model'}`}
+            </Button>
+          )}
         </div>
       ) : null}
 

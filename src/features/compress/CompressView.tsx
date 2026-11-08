@@ -272,7 +272,7 @@ export function CompressView() {
               onClick={loadSample}
               className="self-start rounded-md border border-info/40 bg-info/10 px-3 py-1.5 text-xs text-info transition-colors hover:bg-info/20"
             >
-              Try with a sample clip (downloads from Wikimedia, ~2.4 MB)
+              Try with a sample clip (downloads from Wikimedia, ~1.8 MB)
             </button>
           </>
         ) : (
