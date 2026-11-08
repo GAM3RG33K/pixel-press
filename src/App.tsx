@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useEffect } from "react";
 import {
   ArrowDownToLine,
   BarChart3,
@@ -14,6 +15,8 @@ import { AuditView } from "@/features/audit/AuditView";
 import { OptimizeView } from "@/features/optimize/OptimizeView";
 import { EngineCheckCard } from "@/features/status/EngineCheckCard";
 import { AiSettingsCard } from "@/features/settings/AiSettingsCard";
+import { DiagnosticsFab } from "@/features/diagnostics/DiagnosticsFab";
+import { diag } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
 
 type TabId = "compress" | "compare" | "audit" | "optimize";
@@ -27,6 +30,30 @@ const TABS: { id: TabId; label: string; icon: typeof Zap; description: string }[
 
 export default function App() {
   const [tab, setTab] = useState<TabId>("compress");
+
+  useEffect(() => {
+    diag.info('app', 'app mounted', {
+      crossOriginIsolated: window.crossOriginIsolated,
+      sharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
+      userAgent: navigator.userAgent.slice(0, 120),
+      onLine: navigator.onLine,
+    });
+    window.addEventListener('error', (event) => {
+      diag.error('app', event.message || 'uncaught error', {
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+      });
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      diag.error('app', 'unhandled rejection', {
+        reason:
+          event.reason instanceof Error
+            ? event.reason.message
+            : String(event.reason),
+      });
+    });
+  }, []);
 
   return (
     <div className="min-h-dvh">
@@ -105,6 +132,8 @@ export default function App() {
           <AiSettingsCard />
         </div>
       </main>
+
+      <DiagnosticsFab />
 
       <footer className="border-t border-border/60 px-6 py-6">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">

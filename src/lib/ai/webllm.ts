@@ -15,6 +15,7 @@ import type { CompressionPlan } from '../../skills/compress-video-rules';
 import type { VideoMetadata } from '../../types/media';
 
 import { evaluateRules } from '../../skills/compress-video-rules';
+import { diag } from '../diagnostics';
 import { MODEL_REGISTRY, type RegisteredModelId } from './model-registry';
 
 export type AIPlanStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -222,9 +223,12 @@ export async function downloadModel(
         onProgress?.({ progress: r.progress ?? 0, text: r.text ?? 'loading' });
       },
     });
+    diag.info('ai-download', 'model download complete and cached', { modelId });
     return { ok: true };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    const message = error instanceof Error ? error.message : String(error);
+    diag.error('ai-download', 'model download failed', { modelId, error: message });
+    return { ok: false, error: message };
   }
 }
 
@@ -240,6 +244,7 @@ export async function planWithAI(
   const fallbackPlan = evaluateRules(metadata, intent);
 
   if (aiMode === 'rule-engine') {
+    diag.debug('ai-plan', 'rule engine (explicit)', { modelId: aiMode });
     return { plan: fallbackPlan, used: 'rule-engine' };
   }
 
@@ -292,6 +297,7 @@ export async function planWithAI(
       return { plan: fallbackPlan, used: 'rule-engine', error: 'AI output failed schema validation' };
     }
 
+    diag.info('ai-plan', 'AI plan produced', { modelId: aiMode, targetCodec: plan.targetCodec, crf: plan.crf });
     return {
       plan: { ...plan, ruleSource: `AI: ${plan.ruleSource || 'WebLLM structured plan'}` },
       used: 'ai',

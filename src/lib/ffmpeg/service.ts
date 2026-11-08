@@ -14,6 +14,7 @@ import { resolveCoreSource, type FfmpegCoreSource } from "./core-config";
 import { parseEncoderListing } from "./encoder-inventory";
 import { parseFfprobeJson } from "./ffprobe-parser";
 import { JobQueue } from "./job-queue";
+import { diag } from "@/lib/diagnostics";
 import { percentFromTime, parseProgressLine } from "./progress";
 
 export interface EngineLoadStatus {
@@ -139,6 +140,7 @@ export class FfmpegService {
       if (this.logBuffer.length > 4000) {
         this.logBuffer.splice(0, this.logBuffer.length - 4000);
       }
+      diag.debug('ffmpeg', message);
     });
   }
 
@@ -176,6 +178,7 @@ export class FfmpegService {
           const coreSource = resolveCoreSource({ multithreaded: true });
           await this.loadCore(coreSource, true);
           this.status = { loaded: true, multithreaded: true, coreSource };
+          diag.info('service', 'FFmpeg core loaded (multi-threaded)', { coreSource });
           return this.status;
         } catch (error) {
           console.warn(
@@ -188,6 +191,7 @@ export class FfmpegService {
       const coreSource = resolveCoreSource({ multithreaded: false });
       await this.loadCore(coreSource, false);
       this.status = { loaded: true, multithreaded: false, coreSource };
+      diag.info('service', 'FFmpeg core loaded (single-threaded)', { coreSource });
       return this.status;
     })();
 
@@ -249,10 +253,17 @@ export class FfmpegService {
           );
         }
         const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw);
-        return {
-          metadata: parseFfprobeJson(text, options.fileName, fileSize),
-          raw: text,
-        };
+        const metadata = parseFfprobeJson(text, options.fileName, fileSize);
+        diag.info('probe', 'ffprobe complete', {
+          fileSize,
+          width: metadata.width,
+          height: metadata.height,
+          duration: metadata.duration,
+          fps: metadata.fps,
+          videoCodec: metadata.videoCodec,
+          hasAudio: metadata.hasAudio,
+        });
+        return { metadata, raw: text };
       } finally {
         await this.ffmpeg.deleteFile(inputPath).catch(() => undefined);
         await this.ffmpeg.deleteFile(outputPath).catch(() => undefined);
@@ -319,10 +330,16 @@ export class FfmpegService {
           ...(outputPath !== undefined ? { outputPath } : {}),
         });
 
+        diag.debug('run', 'ffmpeg exec', { args: args.slice(0, 40) });
         const exitCode = await this.ffmpeg.exec(args, -1, { signal });
         const log = this.logBuffer.slice(startLogIndex);
 
         if (exitCode !== 0) {
+          diag.error('run', `ffmpeg exited with code ${exitCode}`, {
+            args: options.buildArgs.toString(),
+            outputFileName: options.outputFileName,
+            logTail: this.logBuffer.slice(-30),
+          });
           throw new Error(`ffmpeg exited with code ${exitCode}`);
         }
 
@@ -362,6 +379,14 @@ export class FfmpegService {
   }
 
   async encode(options: EncodeOptions): Promise<EncodeResult> {
+    diag.info('encode', 'encode start', {
+      fileName: options.inputFileName,
+      codec: options.codec,
+      crf: options.crf,
+      stripAudio: options.stripAudio,
+      faststart: options.faststart,
+      durationSeconds: options.durationSeconds,
+    });
     const result = await this.run({
       inputs: [{ fileName: options.inputFileName, data: options.input }],
       outputFileName: options.outputFileName,
@@ -401,9 +426,15 @@ export class FfmpegService {
     });
 
     if (!result.data) {
+      diag.error('encode', 'ffmpeg did not return output data', { outputFileName: options.outputFileName });
       throw new Error("ffmpeg did not return output data");
     }
 
+    diag.info('encode', 'encode complete', {
+      outputFileName: options.outputFileName,
+      outputBytes: result.data.byteLength,
+      durationMs: result.durationMs,
+    });
     return {
       data: result.data,
       outputFileName: options.outputFileName,

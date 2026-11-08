@@ -55,8 +55,6 @@ export function codecArgs(
         "good",
         "-cpu-used",
         "2",
-        "-row-mt",
-        "1",
       ];
     case "av1":
       return ["-c:v", "libsvtav1", "-crf", String(crf), "-preset", "8"];

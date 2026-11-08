@@ -29,12 +29,12 @@ describe("codecArgs", () => {
     expect(args).toContain("yuv420p");
   });
 
-  it("vp9 sets CRF mode with b:v 0 and row-mt", () => {
+  it("vp9 sets CRF mode with b:v 0 and cpu-used", () => {
     const args = codecArgs("vp9", 30);
     expect(args).toContain("libvpx-vp9");
     expect(args).toContain("-b:v");
     expect(args).toContain("0");
-    expect(args).toContain("-row-mt");
+    expect(args).toContain("-cpu-used");
   });
 
   it("av1 uses libsvtav1 with preset 8", () => {
