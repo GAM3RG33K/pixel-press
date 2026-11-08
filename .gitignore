@@ -11,8 +11,19 @@
 
 # App source and config
 !/src/
+!/src-tauri/
+!/src-tauri/src/
+!/src-tauri/icons/
+!/src-tauri/Cargo.toml
+!/src-tauri/Cargo.lock
+!/src-tauri/build.rs
+!/src-tauri/tauri.conf.json
 !/public/
 !/vercel.json
+
+# Rust build artifacts — never commit
+src-tauri/target/
+src-tauri/gen/
 !/scripts/
 !/tests/
 !/e2e/
