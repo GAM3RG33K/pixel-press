@@ -20,13 +20,6 @@ export function Header() {
           <span>pixel-press</span>
         </a>
 
-        <nav className="hidden items-center gap-6 lg:flex">
-          <span className="text-sm text-muted-foreground">Compress</span>
-          <span className="text-sm text-muted-foreground">Compare</span>
-          <span className="text-sm text-muted-foreground">Audit</span>
-          <span className="text-sm text-muted-foreground">Optimize</span>
-        </nav>
-
         <StatusPill />
       </div>
     </header>

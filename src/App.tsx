@@ -1,64 +1,112 @@
-import { ArrowDownToLine, Code2, ShieldCheck, Zap } from "lucide-react";
+import { useState } from "react";
+import {
+  ArrowDownToLine,
+  BarChart3,
+  FolderOpen,
+  ShieldCheck,
+  Zap,
+} from "lucide-react";
 
 import { Header } from "@/components/header";
-import { Button } from "@/components/ui/button";
+import { CompressView } from "@/features/compress/CompressView";
+import { CompareView } from "@/features/compare/CompareView";
+import { AuditView } from "@/features/audit/AuditView";
+import { OptimizeView } from "@/features/optimize/OptimizeView";
 import { EngineCheckCard } from "@/features/status/EngineCheckCard";
+import { AiSettingsCard } from "@/features/settings/AiSettingsCard";
+import { cn } from "@/lib/utils";
+
+type TabId = "compress" | "compare" | "audit" | "optimize";
+
+const TABS: { id: TabId; label: string; icon: typeof Zap; description: string }[] = [
+  { id: "compress", label: "Compress", icon: Zap, description: "One click: drop a video, pick intent, get optimized files" },
+  { id: "compare", label: "Compare", icon: BarChart3, description: "Encode the same clip 3 ways, pick size vs quality" },
+  { id: "audit", label: "Audit", icon: ShieldCheck, description: "Find every video tag and its issues in your project" },
+  { id: "optimize", label: "Optimize", icon: FolderOpen, description: "Batch encode videos, download a drop-in zip bundle" },
+];
 
 export default function App() {
+  const [tab, setTab] = useState<TabId>("compress");
+
   return (
     <div className="min-h-dvh">
       <Header />
-      <main className="mx-auto w-full max-w-6xl px-6 pb-24 pt-16">
-        <section className="flex flex-col items-start gap-6">
-          <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs text-muted-foreground backdrop-blur">
-            <Zap className="size-3.5 text-primary" aria-hidden />
-            Local-first · No uploads · No telemetry
-          </span>
-          <h1 className="max-w-3xl text-balance text-5xl font-semibold tracking-tight sm:text-6xl">
-            Compress, compare, and audit web video{" "}
-            <span className="text-primary">without leaving your browser</span>.
-          </h1>
-          <p className="max-w-2xl text-lg text-muted-foreground">
-            pixel-press runs FFmpeg compiled to WebAssembly on your device. Drop
-            a video, get smaller files that still look right, and copy
-            production-ready markup — all offline.
-          </p>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button size="lg" disabled>
-              <ArrowDownToLine className="size-4" aria-hidden />
-              Drop a video to begin
-            </Button>
-            <Button size="lg" variant="outline" disabled>
-              <Code2 className="size-4" aria-hidden />
-              View source
-            </Button>
-          </div>
-        </section>
 
-        <section
-          aria-labelledby="shell-status"
-          className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+      <main className="mx-auto w-full max-w-6xl px-4 pb-24 pt-8 sm:px-6">
+        {/* Tab strip */}
+        <nav
+          aria-label="Workbenches"
+          className="flex flex-wrap gap-2 rounded-xl border border-border bg-card/40 p-1.5 backdrop-blur"
         >
-          <h2 id="shell-status" className="sr-only">
-            Application shell status
-          </h2>
-          <StatusCard
-            title="Engine"
-            body="FFmpeg WASM boots lazily in a dedicated worker. Multi-threaded when the browser grants cross-origin isolation, single-threaded otherwise."
-          />
-          <StatusCard
-            title="Private by default"
-            body="Video bytes never touch a network request. Staging happens in the Origin Private File System and is cleaned up automatically."
-          />
-          <StatusCard
-            title="Works offline"
-            body="Installable PWA with a precached shell. The app boots and runs with the network switched off."
-          />
-        </section>
+          {TABS.map(({ id, label, icon: Icon, description }) => {
+            const active = tab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTab(id)}
+                aria-pressed={active}
+                aria-label={`${label} — ${description}`}
+                className={cn(
+                  "group inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all",
+                  active
+                    ? "bg-primary text-primary-foreground shadow"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon className="size-4" aria-hidden />
+                <span>{label}</span>
+              </button>
+            );
+          })}
+        </nav>
 
-        <EngineCheckCard />
+        {/* Hero / intro */}
+        {tab === "compress" ? (
+          <section className="mt-6 flex flex-wrap items-end justify-between gap-4">
+            <div className="max-w-2xl">
+              <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs text-muted-foreground backdrop-blur">
+                <Zap className="size-3.5 text-primary" aria-hidden />
+                Local-first · No uploads · No telemetry
+              </span>
+              <h1 className="mt-3 text-balance text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
+                Ship smaller video,{" "}
+                <span className="text-primary">straight from your browser</span>.
+              </h1>
+              <p className="mt-2 max-w-xl text-base text-muted-foreground">
+                pixel-press uses FFmpeg compiled to WebAssembly on your device.
+                Drop a clip, describe the goal, get production-ready
+                <code className="mx-1 rounded bg-secondary px-1.5 py-0.5 font-mono text-xs">mp4</code>
+                and
+                <code className="mx-1 rounded bg-secondary px-1.5 py-0.5 font-mono text-xs">webm</code>
+                outputs — with code you can paste.
+              </p>
+            </div>
+          </section>
+        ) : null}
+
+        {/* Active workbench */}
+        <div className="mt-6">
+          {tab === "compress" ? <CompressView /> : null}
+          {tab === "compare" ? <CompareView /> : null}
+          {tab === "audit" ? <AuditView /> : null}
+          {tab === "optimize" ? <OptimizeView /> : null}
+        </div>
+
+        {/* Onboarding hint */}
+        <div className="mt-8 rounded-xl border border-border bg-card/40 px-4 py-3 text-xs text-muted-foreground backdrop-blur">
+          <ArrowDownToLine className="mr-1 inline size-3.5 text-primary" aria-hidden />
+          All processing happens on your device. Output size and savings estimates appear on encode completion. Nothing you drop ever leaves this tab.
+        </div>
+
+        {/* Engine diagnostics and local AI settings visible on all tabs */}
+        <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <EngineCheckCard />
+          <AiSettingsCard />
+        </div>
       </main>
-      <footer className="border-t border-border/60 px-6 py-8">
+
+      <footer className="border-t border-border/60 px-6 py-6">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
             <ShieldCheck className="size-3.5" aria-hidden />
@@ -68,16 +116,5 @@ export default function App() {
         </div>
       </footer>
     </div>
-  );
-}
-
-function StatusCard({ title, body }: { title: string; body: string }) {
-  return (
-    <article className="rounded-xl border border-border bg-card/50 p-5 backdrop-blur">
-      <h3 className="text-sm font-medium tracking-wide text-foreground">
-        {title}
-      </h3>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
-    </article>
   );
 }
