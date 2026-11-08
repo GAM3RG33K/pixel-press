@@ -14,7 +14,7 @@ import { resolveCoreSource, type FfmpegCoreSource } from "./core-config";
 import { parseEncoderListing } from "./encoder-inventory";
 import { parseFfprobeJson } from "./ffprobe-parser";
 import { JobQueue } from "./job-queue";
-import { diag } from "@/lib/diagnostics";
+import { diag, captureError } from "@/lib/diagnostics";
 import { percentFromTime, parseProgressLine } from "./progress";
 
 export interface EngineLoadStatus {
@@ -140,7 +140,11 @@ export class FfmpegService {
       if (this.logBuffer.length > 4000) {
         this.logBuffer.splice(0, this.logBuffer.length - 4000);
       }
-      diag.debug('ffmpeg', message);
+      // Capture only crash signatures — the raw encoder/decoder catalog is thousands of lines
+      // and would evict everything else from the diagnostic ring buffer.
+      if (/Aborted\(\)|Segmentation fault|OutOfMemory|out of memory|RuntimeError/i.test(message)) {
+        diag.error('ffmpeg', message);
+      }
     });
   }
 
@@ -165,13 +169,24 @@ export class FfmpegService {
   async load(
     options: { forceSingleThreaded?: boolean } = {},
   ): Promise<EngineLoadStatus> {
-    if (this.loadPromise) return this.loadPromise;
+    diag.info('load', 'load called', { forceSingleThreaded: Boolean(options.forceSingleThreaded) });
+    if (this.loadPromise) {
+      diag.debug('load', 'load already in progress, awaiting');
+      return this.loadPromise;
+    }
 
     this.loadPromise = (async () => {
+      const isolationState = getIsolationState();
       const preferMultithreaded =
         !options.forceSingleThreaded &&
-        getIsolationState() === "isolated" &&
+        isolationState === "isolated" &&
         supportsSharedArrayBuffer();
+      diag.debug('load', 'load decision', {
+        isolationState,
+        supportsSharedArrayBuffer: supportsSharedArrayBuffer(),
+        forceSingleThreaded: Boolean(options.forceSingleThreaded),
+        preferMultithreaded,
+      });
 
       if (preferMultithreaded) {
         try {
@@ -181,10 +196,10 @@ export class FfmpegService {
           diag.info('service', 'FFmpeg core loaded (multi-threaded)', { coreSource });
           return this.status;
         } catch (error) {
-          console.warn(
-            "[ffmpeg] multi-threaded core failed, falling back to single-threaded",
-            error,
-          );
+          diag.warn('load', 'multi-threaded core failed, falling back to single-threaded', {
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+          });
         }
       }
 
@@ -222,6 +237,11 @@ export class FfmpegService {
   }
 
   async probe(options: ProbeOptions): Promise<ProbeResult> {
+    diag.info('probe', 'probe called', {
+      fileName: options.fileName,
+      fileSize: options.input instanceof Uint8Array ? options.input.byteLength : (options.input as Blob).size,
+      signalAborted: options.signal?.aborted ?? null,
+    });
     return this.queue.add(async (signal) => {
       await this.load();
 
@@ -232,7 +252,12 @@ export class FfmpegService {
         ? options.input.byteLength
         : options.input.size;
 
-      await this.ffmpeg.writeFile(inputPath, await toInputData(options.input), {
+      const probeInput = await toInputData(options.input);
+      diag.debug('probe', 'probe input written to sandbox', {
+        path: inputPath,
+        bytes: probeInput.byteLength,
+      });
+      await this.ffmpeg.writeFile(inputPath, probeInput, {
         signal,
       });
 
@@ -240,12 +265,15 @@ export class FfmpegService {
         // `ffprobe` in the WASM core reports a non-zero code even on success
         // (observed with @ffmpeg/core 0.12.10), so the output file is the
         // source of truth; a missing/invalid file still throws.
+        diag.debug('probe', 'ffprobe exec start', { inputPath, outputPath });
         const code = await this.ffmpeg.ffprobe(
           [...buildProbeArgs(inputPath), "-o", outputPath],
           -1,
           { signal },
         );
+        diag.debug('probe', 'ffprobe exec done', { exitCode: code });
 
+        diag.debug('probe', 'reading ffprobe output', { outputPath });
         const raw = await this.ffmpeg.readFile(outputPath, "utf8", { signal });
         if (!isUint8Array(raw) && typeof raw !== "string") {
           throw new Error(
@@ -279,101 +307,165 @@ export class FfmpegService {
    * multi-input operations such as SSIM comparison as well as one-off encodes.
    */
   async run(options: RunRequest): Promise<RunResult> {
+    const runSummary = {
+      inputFiles: options.inputs.map((i) => i.fileName),
+      outputFileName: options.outputFileName,
+      durationSeconds: options.durationSeconds,
+      signalAborted: Boolean(options.signal?.aborted),
+    };
+    diag.info('run', 'run request received', {
+      inputFiles: options.inputs.map((i) => ({
+        fileName: i.fileName,
+        size: i.data instanceof Uint8Array ? i.data.byteLength : (i.data as Blob).size,
+      })),
+      outputFileName: options.outputFileName,
+      durationSeconds: options.durationSeconds,
+      signalAborted: options.signal?.aborted ?? null,
+    });
+
     return this.queue.add(async (signal) => {
-      await this.load();
-
-      const suffix = randomSuffix();
-      const inputPaths = options.inputs.map(
-        (input, index) =>
-          `/in-${suffix}-${index}-${sanitizeFileName(input.fileName)}`,
-      );
-      const outputPath = options.outputFileName
-        ? `/out-${suffix}-${sanitizeFileName(options.outputFileName)}`
-        : undefined;
-
       const startLogIndex = this.logBuffer.length;
       const startedAt = performance.now();
       const durationSeconds = options.durationSeconds ?? 0;
 
-      const onLog = ({ message }: { message: string }) => {
-        const sample = parseProgressLine(message);
-        if (!sample) return;
-        const progress =
-          durationSeconds > 0
-            ? percentFromTime(sample.timeSeconds, durationSeconds)
-            : 0;
-        options.onProgress?.({ progress, sample });
-      };
-
-      const onProgress = ({ progress }: { progress: number }) => {
-        options.onProgress?.({
-          progress: Math.max(0, Math.min(100, progress * 100)),
-        });
-      };
-
-      this.ffmpeg.on("log", onLog);
-      this.ffmpeg.on("progress", onProgress);
+      const inputPaths = options.inputs.map(
+        (input, index) =>
+          `/in-${randomSuffix()}-${index}-${sanitizeFileName(input.fileName)}`,
+      );
+      const outputPath = options.outputFileName
+        ? `/out-${randomSuffix()}-${sanitizeFileName(options.outputFileName)}`
+        : undefined;
 
       try {
-        await Promise.all(
-          options.inputs.map(async (input, index) => {
+        await this.load();
+
+        const onLog = ({ message }: { message: string }) => {
+          const sample = parseProgressLine(message);
+          if (!sample) return;
+          const progress =
+            durationSeconds > 0
+              ? percentFromTime(sample.timeSeconds, durationSeconds)
+              : 0;
+          options.onProgress?.({ progress, sample });
+        };
+
+        const onProgress = ({ progress }: { progress: number }) => {
+          options.onProgress?.({
+            progress: Math.max(0, Math.min(100, progress * 100)),
+          });
+        };
+
+        this.ffmpeg.on("log", onLog);
+        this.ffmpeg.on("progress", onProgress);
+
+        try {
+          diag.info('run', 'writing inputs to ffmpeg sandbox', {
+            inputs: inputPaths,
+          });
+          for (let index = 0; index < inputPaths.length; index++) {
             const path = inputPaths[index];
             if (!path) throw new Error("missing input path");
-            await this.ffmpeg.writeFile(path, await toInputData(input.data), {
+            const data = await toInputData(options.inputs[index]!.data);
+            diag.debug('run', 'writing file', {
+              path,
+              bytes: data.byteLength,
+            });
+            await this.ffmpeg.writeFile(path, data, { signal });
+            diag.debug('run', 'file written', { path });
+          }
+
+          const args = options.buildArgs({
+            inputPaths,
+            ...(outputPath !== undefined ? { outputPath } : {}),
+          });
+          diag.info('run', 'ffmpeg exec start', { args });
+
+          let exitCode: number | undefined;
+          try {
+            exitCode = await this.ffmpeg.exec(args, -1, { signal });
+          } catch (error) {
+            const normalized = captureError(error);
+            diag.error('run', `ffmpeg exec threw: ${normalized.message}`, {
+              ...runSummary,
+              args,
+              name: normalized.name,
+              stack: normalized.stack,
+              ffmpegCode: (normalized as Error & { ffmpegCode?: unknown }).ffmpegCode,
+              logTail: this.logBuffer.slice(-40),
+            });
+            throw normalized;
+          }
+
+          const log = this.logBuffer.slice(startLogIndex);
+
+          if (exitCode !== 0) {
+            diag.error('run', `ffmpeg exited with code ${exitCode}`, {
+              ...runSummary,
+              args,
+              logTail: log.slice(-40),
+            });
+            throw new Error(`ffmpeg exited with code ${exitCode}`);
+          }
+
+          let data: Uint8Array | undefined;
+          if (outputPath) {
+            diag.debug('run', 'reading ffmpeg output', { outputPath });
+            const raw = await this.ffmpeg.readFile(outputPath, undefined, {
               signal,
             });
-          }),
-        );
-
-        const args = options.buildArgs({
-          inputPaths,
-          ...(outputPath !== undefined ? { outputPath } : {}),
-        });
-
-        diag.debug('run', 'ffmpeg exec', { args: args.slice(0, 40) });
-        const exitCode = await this.ffmpeg.exec(args, -1, { signal });
-        const log = this.logBuffer.slice(startLogIndex);
-
-        if (exitCode !== 0) {
-          diag.error('run', `ffmpeg exited with code ${exitCode}`, {
-            args: options.buildArgs.toString(),
-            outputFileName: options.outputFileName,
-            logTail: this.logBuffer.slice(-30),
-          });
-          throw new Error(`ffmpeg exited with code ${exitCode}`);
-        }
-
-        let data: Uint8Array | undefined;
-        if (outputPath) {
-          const raw = await this.ffmpeg.readFile(outputPath, undefined, {
-            signal,
-          });
-          if (!isUint8Array(raw)) {
-            throw new Error("ffmpeg returned a non-binary payload");
+            if (!isUint8Array(raw)) {
+              diag.error('run', 'ffmpeg output not binary', {
+                outputPath,
+                receivedType: typeof raw,
+              });
+              throw new Error("ffmpeg returned a non-binary payload");
+            }
+            data = raw;
+            diag.debug('run', 'output read complete', {
+              outputPath,
+              bytes: raw.byteLength,
+            });
           }
-          data = raw;
-        }
 
-        return {
-          ...(data !== undefined ? { data } : {}),
-          ...(options.outputFileName !== undefined
-            ? { outputFileName: options.outputFileName }
-            : {}),
-          durationMs: Math.round(performance.now() - startedAt),
-          exitCode,
-          log,
-        };
-      } finally {
-        this.ffmpeg.off("log", onLog);
-        this.ffmpeg.off("progress", onProgress);
-        await Promise.all(
-          inputPaths.map((path) =>
-            this.ffmpeg.deleteFile(path).catch(() => undefined),
-          ),
-        );
-        if (outputPath) {
-          await this.ffmpeg.deleteFile(outputPath).catch(() => undefined);
+          diag.info('run', 'run complete', {
+            ...runSummary,
+            exitCode,
+            outputBytes: data?.byteLength,
+            avgMs: Math.round(performance.now() - startedAt),
+            logLineCount: log.length,
+            logTail: log.slice(-20),
+          });
+          diag.debug('run', 'full ffmpeg args used', { args });
+
+          return {
+            ...(data !== undefined ? { data } : {}),
+            ...(options.outputFileName !== undefined
+              ? { outputFileName: options.outputFileName }
+              : {}),
+            durationMs: Math.round(performance.now() - startedAt),
+            exitCode,
+            log,
+          };
+        } finally {
+          this.ffmpeg.off("log", onLog);
+          this.ffmpeg.off("progress", onProgress);
+          await Promise.all(
+            inputPaths.map((path) =>
+              this.ffmpeg.deleteFile(path).catch(() => undefined),
+            ),
+          );
+          if (outputPath) {
+            await this.ffmpeg.deleteFile(outputPath).catch(() => undefined);
+          }
         }
+      } catch (error) {
+        const normalized = captureError(error);
+        diag.error('run', `run failed: ${normalized.message}`, {
+          ...runSummary,
+          name: normalized.name,
+          stack: normalized.stack,
+        });
+        throw normalized;
       }
     }, options.signal ? { signal: options.signal } : {}).promise;
   }
@@ -451,9 +543,13 @@ export class FfmpegService {
         await this.load();
         const startLogIndex = this.logBuffer.length;
         await this.ffmpeg.exec(["-hide_banner", "-encoders"], -1, { signal });
+        diag.info('capability', 'capability probe exec complete', {
+          startLogIndex,
+          logLineCount: this.logBuffer.length - startLogIndex,
+          multithreaded: this.status?.multithreaded ?? false,
+        });
         const lines = this.logBuffer.slice(startLogIndex);
-        this.capabilityLog = lines;
-        return parseEncoderListing(lines, this.status?.multithreaded ?? false);
+        this.capabilityLog = lines;        return parseEncoderListing(lines, this.status?.multithreaded ?? false);
       })
       .promise;
 
@@ -466,6 +562,10 @@ export class FfmpegService {
   }
 
   terminate(): void {
+    diag.info('terminate', 'service terminate called', {
+      queueSize: this.queue.size,
+      loaded: Boolean(this.status?.loaded),
+    });
     this.queue.cancelAll();
     this.ffmpeg.terminate();
     this.loadPromise = null;

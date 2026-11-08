@@ -13,6 +13,7 @@ import {
   auditProjectFiles,
   type AuditReport,
 } from "@/lib/audit";
+import { diag, captureError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
 
 interface ScannedFile {
@@ -48,7 +49,9 @@ export function AuditView({ onSendToOptimize }: AuditViewProps) {
       setReport(audit);
       setStatus(null);
     } catch (caught) {
-      setStatus(`Error: ${caught instanceof Error ? caught.message : String(caught)}`);
+      const normalized = captureError(caught);
+      diag.error('audit', `scan failed: ${normalized.message}`, { stack: normalized.stack });
+      setStatus(`Error: ${normalized.message}`);
     } finally {
       setScanning(false);
     }
@@ -82,11 +85,14 @@ export function AuditView({ onSendToOptimize }: AuditViewProps) {
         return;
       } catch (caught) {
         if (caught instanceof DOMException && caught.name === "AbortError") {
+          diag.info('audit', 'directory pick aborted by user');
           setScanning(false);
           setStatus(null);
           return;
         }
-        setStatus(`Error: ${caught instanceof Error ? caught.message : String(caught)}`);
+        const normalized = captureError(caught);
+        diag.error('audit', `directory pick failed: ${normalized.message}`, { stack: normalized.stack });
+        setStatus(`Error: ${normalized.message}`);
         setScanning(false);
         return;
       }

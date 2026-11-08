@@ -11,6 +11,7 @@ import {
 import type { VideoMetadata } from "@/types/media";
 import { Button } from "@/components/ui/button";
 import { getFfmpegService } from "@/lib/ffmpeg/service";
+import { diag, captureError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
 import { buildVideoSnippet } from "@/lib/snippet";
 
@@ -66,8 +67,13 @@ export function OptimizeView() {
       await walk(handle, "");
       collectCandidates(collected);
     } catch (caught) {
-      if (caught instanceof DOMException && caught.name === "AbortError") return;
-      setError(`Could not open directory: ${caught instanceof Error ? caught.message : String(caught)}`);
+      if (caught instanceof DOMException && caught.name === "AbortError") {
+        diag.info('optimize', 'directory pick aborted by user');
+        return;
+      }
+      const normalized = captureError(caught);
+      diag.error('optimize', `directory open failed: ${normalized.message}`, { stack: normalized.stack });
+      setError(`Could not open directory: ${normalized.message}`);
     }
   }, []);
 
@@ -130,7 +136,12 @@ export function OptimizeView() {
         ),
       );
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : String(caught);
+      const normalized = captureError(caught);
+      const message = normalized.message;
+      diag.error('optimize', `candidate encode failed: ${normalized.message}`, {
+        index,
+        stack: normalized.stack,
+      });
       setCandidates((prev) =>
         prev.map((c, i) =>
           i === index ? { ...c, status: "failed" as const, error: message } : c,
@@ -234,7 +245,9 @@ export function OptimizeView() {
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (caught) {
-      setError(`Could not create zip: ${caught instanceof Error ? caught.message : String(caught)}`);
+      const normalized = captureError(caught);
+      diag.error('optimize', `zip creation failed: ${normalized.message}`, { stack: normalized.stack });
+      setError(`Could not create zip: ${normalized.message}`);
     } finally {
       setZipping(false);
     }

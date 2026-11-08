@@ -12,6 +12,7 @@ import type { EncoderCapabilities, VideoMetadata } from "@/types/media";
 import { Button } from "@/components/ui/button";
 import { DropZone } from "@/components/DropZone";
 import { getFfmpegService } from "@/lib/ffmpeg/service";
+import { diag, captureError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
 
 interface CompareResult {
@@ -56,7 +57,12 @@ export function CompareView() {
       setStatus("ready");
       service.getCapabilities().then(setCapabilities).catch(() => undefined);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      const normalized = captureError(caught);
+      diag.error('compare', `probe failed: ${normalized.message}`, {
+        name: normalized.name,
+        stack: normalized.stack,
+      });
+      setError(normalized.message);
       setStatus("error");
     }
   }, []);
@@ -118,10 +124,16 @@ export function CompareView() {
       setStatus("done");
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") {
+        diag.info('compare', 'encode aborted by user');
         setStatus("ready");
         return;
       }
-      setError(caught instanceof Error ? caught.message : String(caught));
+      const normalized = captureError(caught);
+      diag.error('compare', `encode failed: ${normalized.message}`, {
+        name: normalized.name,
+        stack: normalized.stack,
+      });
+      setError(normalized.message);
       setStatus("error");
     }
   }, [file, metadata]);

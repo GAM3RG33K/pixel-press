@@ -32,6 +32,10 @@ export default function App() {
   const [tab, setTab] = useState<TabId>("compress");
 
   useEffect(() => {
+    // Avoid the React StrictMode dev double-mount logging twice
+    const w = window as unknown as { __diagAppMounted?: boolean };
+    if (w.__diagAppMounted) return;
+    w.__diagAppMounted = true;
     diag.info('app', 'app mounted', {
       crossOriginIsolated: window.crossOriginIsolated,
       sharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',

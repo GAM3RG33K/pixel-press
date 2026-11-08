@@ -173,6 +173,7 @@ function getEngine(modelId: RegisteredModelId): Promise<{
   hasModelInCache: (modelId: string) => Promise<boolean>;
 } | null> {
   if (!enginePromise) {
+    diag.info('ai-engine', 'loading @mlc-ai/web-llm library');
     enginePromise = import('@mlc-ai/web-llm')
       .then((mod) => mod as unknown as WebLlmLib)
       .catch(() => null);
@@ -185,9 +186,15 @@ function getEngine(modelId: RegisteredModelId): Promise<{
     if (!m) return null;
     const webllmId = getWebllmId(modelId);
     try {
+      diag.debug('ai-engine', 'checking webllm cache', { webllmId });
       const cached = await m.hasModelInCache(webllmId);
-      if (!cached) return null; // not downloaded yet — caller may trigger download explicitly
+      if (!cached) {
+        diag.info('ai-engine', 'model not in webllm cache', { webllmId });
+        return null;
+      }
+      diag.info('ai-engine', 'model found in webllm cache', { webllmId });
       if (!engines.has(modelId)) {
+        diag.debug('ai-engine', 'creating webllm engine', { webllmId });
         const engine = await m.CreateMLCEngine(webllmId, {
           initProgressCallback: (report) => {
             console.info('[webllm] init', JSON.stringify(report));
@@ -279,9 +286,14 @@ export async function planWithAI(
       temperature: 0,
     });
 
-    const choices = response.choices as Array<{ message?: { content?: string } }> | undefined;
-    const content = choices?.[0]?.message?.content;
+    const choicesArr = (response.choices as Array<{ message?: { content?: string } }> | undefined) ?? [];
+    const content = choicesArr[0]?.message?.content;
+    diag.debug('ai-plan', 'webllm response received', {
+      hasContent: Boolean(content),
+      choiceCount: choicesArr.length,
+    });
     if (!content) {
+      diag.warn('ai-plan', 'webllm returned no content', { webllmId });
       return { plan: fallbackPlan, used: 'rule-engine', error: 'AI returned no content' };
     }
 
@@ -294,10 +306,18 @@ export async function planWithAI(
 
     const plan = validatePlan(parsed);
     if (!plan) {
+      diag.warn('ai-plan', 'webllm output failed schema validation', { webllmId, rawContent: String(parsed).slice(0, 400) });
       return { plan: fallbackPlan, used: 'rule-engine', error: 'AI output failed schema validation' };
     }
 
     diag.info('ai-plan', 'AI plan produced', { modelId: aiMode, targetCodec: plan.targetCodec, crf: plan.crf });
+    diag.info('ai-plan', 'AI plan produced', {
+      modelId: aiMode,
+      targetCodec: plan.targetCodec,
+      crf: plan.crf,
+      twoPass: plan.twoPass,
+      audioHandling: plan.audioHandling,
+    });
     return {
       plan: { ...plan, ruleSource: `AI: ${plan.ruleSource || 'WebLLM structured plan'}` },
       used: 'ai',

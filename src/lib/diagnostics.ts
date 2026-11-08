@@ -78,6 +78,32 @@ export function diagLog(
   }
 }
 
+/**
+ * Extract a fully-typed error object from any thrown value.
+ * FFmpeg throws non-Error objects on WASM crashes, so we normalize here.
+ */
+export function captureError(error: unknown): Error & { ffmpegCode?: unknown } {
+  if (error instanceof Error) return error as Error & { ffmpegCode?: unknown };
+
+  const fallback = new Error(
+    typeof error === 'string'
+      ? error
+      : (() => {
+          try {
+            return JSON.stringify(error);
+          } catch {
+            return String(error);
+          }
+        })(),
+  );
+  fallback.name = 'UnknownError';
+  if (error && typeof error === 'object') {
+    const code = (error as { code?: unknown }).code;
+    if (code !== undefined) (fallback as Error & { ffmpegCode?: unknown }).ffmpegCode = code;
+  }
+  return fallback;
+}
+
 /** Convenience shortcuts. */
 export const diag = {
   debug: (scope: string, message: string, details?: unknown) =>

@@ -28,6 +28,7 @@ import {
 import { useAiMode } from "@/lib/ai/use-ai-mode";
 import { planWithAI } from "@/lib/ai/webllm";
 import { fetchSampleClip } from "@/lib/sample";
+import { diag, captureError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
 
 interface OutputFile {
@@ -104,7 +105,12 @@ export function CompressView() {
       const sample = await fetchSampleClip();
       await analyzeFile(sample);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      const normalized = captureError(caught);
+      diag.error('compress.sample', `sample fetch/analysis failed: ${normalized.message}`, {
+        name: normalized.name,
+        stack: normalized.stack,
+      });
+      setError(normalized.message);
       setStatus("error");
     }
   }, []);
@@ -132,8 +138,16 @@ export function CompressView() {
 
       service.getCapabilities().then(setCapabilities).catch(() => undefined);
     } catch (caught) {
-      if (caught instanceof DOMException && caught.name === "AbortError") return;
-      setError(caught instanceof Error ? caught.message : String(caught));
+      if (caught instanceof DOMException && caught.name === "AbortError") {
+        diag.info('compress', 'probe aborted by user');
+        return;
+      }
+      const normalized = captureError(caught);
+      diag.error('compress', `probe failed: ${normalized.message}`, {
+        name: normalized.name,
+        stack: normalized.stack,
+      });
+      setError(normalized.message);
       setStatus("error");
     }
   }, []);
@@ -159,7 +173,6 @@ export function CompressView() {
         if (abortRef.current.signal.aborted) return;
         const outName =
           variant.container === "webm" ? `${base}-webm.webm` : `${base}-h264.mp4`;
-        const started = performance.now();
         const encodedResult = await service.encode({
           input: file,
           inputFileName: file.name,
@@ -197,18 +210,28 @@ export function CompressView() {
         });
         setProgress(0);
 
-        const elapsed = Math.round(performance.now() - started);
-        console.info(`[compress] ${variant.label} done in ${elapsed}ms`);
+        diag.info('compress', `variant encoded: ${variant.label}`, {
+          bytes: encodedResult.data.byteLength,
+          durationMs: encodedResult.durationMs,
+          crf: variant.crf,
+          codec: variant.codec,
+        });
       }
 
       setOutputs(encoded);
       setStatus("done");
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") {
+        diag.info('compress', 'encode aborted by user');
         setStatus("ready");
         return;
       }
-      setError(caught instanceof Error ? caught.message : String(caught));
+      const normalized = captureError(caught);
+      diag.error('compress', `encode failed: ${normalized.message}`, {
+        name: normalized.name,
+        stack: normalized.stack,
+      });
+      setError(normalized.message);
       setStatus("error");
     }
   }, [file, metadata, variantSet]);

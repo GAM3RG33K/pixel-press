@@ -14,6 +14,7 @@
 
 import type { CompressionPlan } from '../skills/compress-video-rules';
 import type { VideoMetadata } from '../types/media';
+import { diag } from './diagnostics';
 import { evaluateRules } from '../skills/compress-video-rules';
 
 /** JSON schema for the structured output contract. */
@@ -97,6 +98,12 @@ export async function compressIntent(
   metadata: VideoMetadata,
   intent?: string,
 ): Promise<CompressionPlan> {
+  diag.debug('compressIntent', 'compressIntent called', {
+    hasIntent: Boolean(intent && intent.trim()),
+    width: metadata.width,
+    height: metadata.height,
+    duration: metadata.duration,
+  });
   // Try WebLLM if available
   const webllm = (self as unknown as { WebLLM?: unknown }).WebLLM;
   if (webllm) {
