@@ -12,6 +12,7 @@
 # App source and config
 !/src/
 !/public/
+!/vercel.json
 !/scripts/
 !/tests/
 !/e2e/

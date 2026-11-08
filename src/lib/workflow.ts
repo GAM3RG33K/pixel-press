@@ -84,11 +84,10 @@ export function estimateSizeBytes(
   crf: number,
   codec: TargetCodec,
 ): number {
-  const factor =
-    codec === "vp9"
-      ? Math.pow(0.62, (42 - crf) / 6) * 0.55
-      : Math.pow(0.72, (30 - crf) / 5) * 0.62;
-  return Math.round(sourceBytes * Math.min(1, Math.max(0.05, factor)));
+  // Higher CRF = more compression = smaller file.
+  const base = codec === "vp9" ? 0.42 : 0.5;
+  const factor = Math.pow(base, (crf - 18) / 6);
+  return Math.round(sourceBytes * Math.min(1, Math.max(0.04, factor)));
 }
 
 function ffmpegFlags(codec: TargetCodec, crf: number): string[] {

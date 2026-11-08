@@ -19,6 +19,16 @@ development. They are not part of the MIT-licensed source tree.
   GPL obligations attach to the core binary and its source, which this project
   does not relicense.
 
+### WebLLM (`@mlc-ai/web-llm`)
+
+- License: **Apache-2.0**
+- Source: <https://github.com/mlc-ai/web-llm>
+- Distribution: bundled into the app as a JS dependency; loads model weights
+  from Hugging Face on user opt-in (`Settings → Local AI`).
+- Models (all Apache-2.0):
+  - `SmolLM2-360M-Instruct-q4f16_1-MLC` — <https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct>
+  - `Qwen2-0.5B-Instruct-q4f16_1-MLC` — <https://huggingface.co/Qwen/Qwen2-0.5B-Instruct>
+
 ## Development-only components
 
 ### Playwright (`@playwright/test`)
@@ -27,6 +37,12 @@ development. They are not part of the MIT-licensed source tree.
 - Used only to run end-to-end tests. Tests drive the locally installed Google
   Chrome. Bundled Playwright browsers are intentionally not installed, because
   bundled Chromium can lag patched Chrome releases.
+
+### jszip (`jszip`)
+
+- License: MIT
+- Source: <https://github.com/Stuk/jszip>
+- Used to bundle optimized videos into a downloadable `.zip` in Scan & Optimize.
 
 ### Vite, React, TypeScript, Tailwind CSS, Vitest
 

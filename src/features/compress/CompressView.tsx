@@ -27,6 +27,7 @@ import {
 } from "@/lib/workflow";
 import { useAiMode } from "@/lib/ai/use-ai-mode";
 import { planWithAI } from "@/lib/ai/webllm";
+import { fetchSampleClip } from "@/lib/sample";
 import { cn } from "@/lib/utils";
 
 interface OutputFile {
@@ -95,6 +96,18 @@ export function CompressView() {
         .catch(() => undefined);
     }
   }, [metadata]);
+
+  const loadSample = useCallback(async () => {
+    setError(null);
+    setStatus("probing");
+    try {
+      const sample = await fetchSampleClip();
+      await analyzeFile(sample);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      setStatus("error");
+    }
+  }, []);
 
   const analyzeFile = useCallback(async (incoming: File) => {
     abortRef.current?.abort();
@@ -252,7 +265,16 @@ export function CompressView() {
         </p>
 
         {!file ? (
-          <DropZone onFile={analyzeFile} />
+          <>
+            <DropZone onFile={analyzeFile} />
+            <button
+              type="button"
+              onClick={loadSample}
+              className="self-start rounded-md border border-info/40 bg-info/10 px-3 py-1.5 text-xs text-info transition-colors hover:bg-info/20"
+            >
+              Try with a sample clip (downloads from Wikimedia, ~2.4 MB)
+            </button>
+          </>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/50 p-4 backdrop-blur">
             <div className="min-w-0">

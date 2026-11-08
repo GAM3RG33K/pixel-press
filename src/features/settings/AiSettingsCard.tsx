@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BrainCircuit, CheckCircle2, Download, Trash2, Zap } from "lucide-react";
+import { BrainCircuit, CheckCircle2, Download, Loader2, Trash2, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +10,7 @@ import {
   type UserPreferences,
 } from "@/lib/settings";
 import { modelManager } from "@/lib/model-manager";
+import { downloadModel } from "@/lib/ai/webllm";
 import { cn } from "@/lib/utils";
 
 const PREF_OPTIONS: { id: AIMode; title: string; body: string; badge?: string }[] = [
@@ -42,6 +43,8 @@ export function AiSettingsCard() {
   });
   const [status, setStatus] = useState<string | null>(null);
   const [selected, setSelected] = useState<AIMode>('rule-engine');
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [checking, setChecking] = useState(false);
 
   useEffect(() => {
@@ -152,6 +155,54 @@ export function AiSettingsCard() {
           );
         })}
       </div>
+
+      {selected !== 'rule-engine' ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-[11px] text-warning">
+          <span className="font-medium">Model download required.</span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              setIsDownloading(true);
+              setStatus('Downloading model to browser cache…');
+              setDownloadProgress(0);
+              const result = await downloadModel(selected as 'smollm2-360m' | 'qwen2-0.5b', ({ progress, text }) => {
+                setDownloadProgress(progress);
+                setStatus(text);
+              });
+              setIsDownloading(false);
+              setDownloadProgress(null);
+              if (result.ok) {
+                setStatus('Model cached and ready.');
+              } else {
+                setStatus(`Download failed: ${result.error ?? 'unknown error'}`);
+              }
+              window.setTimeout(() => setStatus(null), 2500);
+            }}
+            disabled={isDownloading}
+          >
+            {isDownloading ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <Download className="size-4" aria-hidden />
+            )}
+            {isDownloading
+              ? downloadProgress !== null
+                ? `Downloading… ${Math.round(downloadProgress * 100)}%`
+                : 'Starting download…'
+              : `Download ${PREF_OPTIONS.find((o) => o.id === selected)?.title.split(' ')[0] ?? 'model'}`}
+          </Button>
+        </div>
+      ) : null}
+
+      {downloadProgress !== null ? (
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary">
+          <div
+            className="h-full rounded-full bg-primary transition-[width] duration-200"
+            style={{ width: `${Math.round(downloadProgress * 100)}%` }}
+          />
+        </div>
+      ) : null}
 
       <div className="mt-3 flex items-center gap-2 text-[11px] text-muted-foreground">
         <span className={cn("size-1.5 rounded-full", prefs.aiMode === 'rule-engine' ? "bg-success" : "bg-info")} aria-hidden />
