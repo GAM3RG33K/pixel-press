@@ -35,7 +35,8 @@ for (const [size, out] of pngJobs) {
   run('rsvg-convert', ['-w', String(size), '-h', String(size), SVG, '-o', resolve(out)]);
 }
 
-const iconset = mkdtempSync(join(tmpdir(), 'pixel-press-iconset-') + '/icon.iconset');
+const iconsetDir = mkdtempSync(join(tmpdir(), 'pixel-press-iconset-'));
+const iconset = join(iconsetDir, 'icon.iconset');
 mkdirSync(iconset, { recursive: true });
 try {
   for (const size of iconsetSizes) {
@@ -46,7 +47,7 @@ try {
   }
   run('iconutil', ['-c', 'icns', iconset, '-o', resolve('src-tauri/icons/icon.icns')]);
 } finally {
-  rmSync(join(iconset, '..'), { recursive: true, force: true });
+  rmSync(iconsetDir, { recursive: true, force: true });
 }
 
 // Multi-size .ico via Pillow

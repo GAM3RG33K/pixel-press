@@ -104,7 +104,7 @@ components:
 
 ## Overview
 
-"The Workbench" — a quiet, airy engineering bench for video compression. Tools laid out, no spectacle: the encode is the show, the UI is just the bench. Dark, near-black surfaces with one violet signature (`#8B5CF6`-family, carried by The Press mark's plate). Comfortable density, generous targets, restrained motion. Everything local; nothing uploads.
+"The Workbench" — a quiet, airy engineering bench for video compression. Tools laid out, no spectacle: the encode is the show, the UI is just the bench. Dark, near-black surfaces with one violet signature (`#8B5CF6`-family, carried by the Halftone Press mark — a shrinking dot field resolving into a violet plate). Comfortable density, generous targets, restrained motion. Everything local; nothing uploads.
 
 Shipped typeface is currently Inter (see Tokens); the recorded direction is **Schibsted Grotesk** — a newspaper-grade grotesk with genuine press DNA — self-hosted, never via CDN. Adoption is a font swap, not a redesign.
 
