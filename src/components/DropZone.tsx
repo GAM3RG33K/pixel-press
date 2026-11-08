@@ -1,5 +1,29 @@
-import { useCallback, useState, type DragEvent } from "react";
-import { UploadCloud } from "lucide-react";
+import { useCallback, useEffect, useState, type DragEvent } from "react";
+import { UploadCloud, Loader2, XCircle } from "lucide-react";
+
+import { diag } from "@/lib/diagnostics";
+import { isTauri } from "@/lib/tauri";
+
+const VIDEO_EXTENSION = /\.(mp4|webm|mov|mkv|avi|m4v)$/i;
+
+function mimeFromName(name: string): string {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  switch (ext) {
+    case "mp4":
+    case "m4v":
+      return "video/mp4";
+    case "webm":
+      return "video/webm";
+    case "mov":
+      return "video/quicktime";
+    case "mkv":
+      return "video/x-matroska";
+    case "avi":
+      return "video/x-msvideo";
+    default:
+      return "video/mp4";
+  }
+}
 
 /** Minimal drop zone for the workbench views. */
 export function DropZone({
@@ -12,12 +36,29 @@ export function DropZone({
   compact?: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const handle = useCallback(
-    (file: File | undefined) => {
-      if (!file) return;
-      if (!file.type.startsWith("video/")) return;
+    (file: File | undefined, source: string) => {
+      if (!file) {
+        diag.warn("dropzone", `no file received via ${source}`);
+        return;
+      }
+      if (!file.type.startsWith("video/") && !VIDEO_EXTENSION.test(file.name)) {
+        diag.warn("dropzone", `rejected non-video file: ${file.name} (${file.type || "unknown type"})`);
+        setNotice(`"${file.name}" is not a video file pixel-press can read.`);
+        window.setTimeout(() => setNotice(null), 4000);
+        return;
+      }
+      diag.info("dropzone", `file selected via ${source}`, {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      });
+      setBusy(true);
       onFile(file);
+      window.setTimeout(() => setBusy(false), 600);
     },
     [onFile],
   );
@@ -26,10 +67,76 @@ export function DropZone({
     (event: DragEvent<HTMLDivElement>) => {
       event.preventDefault();
       setDragging(false);
-      handle(event.dataTransfer.files?.[0]);
+      handle(event.dataTransfer.files?.[0], "html5-drop");
     },
     [handle],
   );
+
+  // In Tauri, Finder drops are delivered as native drag-drop events — the DOM
+  // dataTransfer never carries the file. Read bytes via the fs plugin instead.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+
+    (async () => {
+      const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+      const off = await getCurrentWebview().onDragDropEvent((event) => {
+        if (cancelled) return;
+        const payload = event.payload;
+        if (payload.type === "over" || payload.type === "enter") {
+          setDragging(true);
+          return;
+        }
+        if (payload.type === "leave") {
+          setDragging(false);
+          return;
+        }
+        if (payload.type !== "drop") return;
+        setDragging(false);
+        const paths: string[] = payload.paths ?? [];
+        diag.info("dropzone", "native drop received", { count: paths.length, paths });
+        const videoPath = paths.find((p) => VIDEO_EXTENSION.test(p));
+        if (!videoPath) {
+          diag.warn("dropzone", "no supported video in native drop", { paths });
+          setNotice("No supported video file was in that drop (MP4 · WebM · MOV · MKV · AVI).");
+          window.setTimeout(() => setNotice(null), 4000);
+          return;
+        }
+        setBusy(true);
+        (async () => {
+          try {
+            // Grant fs scope read access to just this dropped file (it's outside $APPDATA).
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("allow_file_path", { path: videoPath });
+            const { readFile } = await import("@tauri-apps/plugin-fs");
+            const bytes = await readFile(videoPath);
+            const name = videoPath.split(/[/\\]/).pop() ?? "video.mp4";
+            diag.info("dropzone", "dropped file read into memory", {
+              name,
+              bytes: bytes.byteLength,
+            });
+            onFile(new File([bytes.buffer as ArrayBuffer], name, { type: mimeFromName(name) }));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            diag.error("dropzone", `failed to read dropped file ${videoPath}: ${message}`);
+            setNotice(`Couldn't read the dropped file: ${message}`);
+            window.setTimeout(() => setNotice(null), 5000);
+          } finally {
+            setBusy(false);
+          }
+        })();
+      });
+      unlisten = off;
+    })().catch((error) => {
+      diag.error("dropzone", `drag-drop listener failed to start: ${error instanceof Error ? error.message : String(error)}`);
+    });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [onFile]);
 
   if (compact) {
     return (
@@ -39,18 +146,27 @@ export function DropZone({
           type="file"
           accept="video/*,.mkv,.avi,.mov"
           className="sr-only"
-          disabled={disabled}
-          onChange={(event) => handle(event.currentTarget.files?.[0])}
+          disabled={disabled || busy}
+          onChange={(event) => handle(event.currentTarget.files?.[0], "input")}
         />
         <label
           htmlFor="file-input-compact"
           className={[
             "inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-border bg-card/60 px-4 text-sm backdrop-blur transition-colors hover:bg-accent",
-            disabled ? "pointer-events-none opacity-50" : "",
+            disabled || busy ? "pointer-events-none opacity-50" : "",
           ].join(" ")}
         >
-          <UploadCloud className="size-4" aria-hidden />
-          Choose video
+          {busy ? (
+            <>
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+              Reading file…
+            </>
+          ) : (
+            <>
+              <UploadCloud className="size-4" aria-hidden />
+              Choose video
+            </>
+          )}
         </label>
       </div>
     );
@@ -61,12 +177,13 @@ export function DropZone({
       role="button"
       tabIndex={0}
       aria-label="Drop a video file here or click to browse"
+      aria-busy={busy}
       className={[
         "group flex flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center transition-colors",
         dragging
           ? "border-primary/70 bg-primary/10"
           : "border-border bg-card/40 hover:border-primary/40 hover:bg-card/60",
-        disabled ? "pointer-events-none opacity-50" : "",
+        disabled || busy ? "pointer-events-none opacity-60" : "",
       ].join(" ")}
       onDragOver={(event) => {
         event.preventDefault();
@@ -82,24 +199,40 @@ export function DropZone({
       }}
       onClick={() => document.getElementById("file-input")?.click()}
     >
-      <UploadCloud className="size-10 text-muted-foreground transition-colors group-hover:text-primary" aria-hidden />
-      <p className="mt-3 text-base font-medium">
-        Drop a video, or{" "}
-        <span className="underline underline-offset-4 decoration-primary/60">
-          browse your files
-        </span>
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        MP4 · WebM · MOV · MKV · AVI — everything stays on your device
-      </p>
+      {busy ? (
+        <>
+          <Loader2 className="size-10 animate-spin text-primary" aria-hidden />
+          <p className="mt-3 text-base font-medium">Reading file…</p>
+          <p className="mt-1 text-xs text-muted-foreground">Loading it into the encoder sandbox</p>
+        </>
+      ) : (
+        <>
+          <UploadCloud className="size-10 text-muted-foreground transition-colors group-hover:text-primary" aria-hidden />
+          <p className="mt-3 text-base font-medium">
+            Drop a video, or{" "}
+            <span className="underline underline-offset-4 decoration-primary/60">
+              browse your files
+            </span>
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            MP4 · WebM · MOV · MKV · AVI — everything stays on your device
+          </p>
+        </>
+      )}
       <input
         id="file-input"
         type="file"
         accept="video/*,.mkv,.avi,.mov"
         className="sr-only"
-        disabled={disabled}
-        onChange={(event) => handle(event.currentTarget.files?.[0])}
+        disabled={disabled || busy}
+        onChange={(event) => handle(event.currentTarget.files?.[0], "input")}
       />
+      {notice ? (
+        <p className="mt-3 flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive" role="alert">
+          <XCircle className="size-3.5 shrink-0" aria-hidden />
+          {notice}
+        </p>
+      ) : null}
     </div>
   );
 }

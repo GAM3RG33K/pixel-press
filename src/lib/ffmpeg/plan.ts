@@ -40,7 +40,7 @@ export function codecFallbackNotice(
   return {
     requestedCodec: requested,
     actualCodec: codec,
-    message: `${subject} requested ${CODEC_LABELS[requested]}, which this browser's encoder does not provide. It will be compressed with ${CODEC_LABELS[codec]} instead.`,
+    message: `${subject} requested ${CODEC_LABELS[requested]}, which this build's encoder does not provide. It will be compressed with ${CODEC_LABELS[codec]} instead.`,
   };
 }
 
@@ -68,7 +68,7 @@ export function applyEncoderFallback(
     notice: {
       requestedCodec: variant.requestedCodec,
       actualCodec: codec,
-      message: `${variant.label} requested ${CODEC_LABELS[variant.requestedCodec]}, which this browser's encoder does not provide. It will be compressed with ${CODEC_LABELS[codec]} instead.`,
+      message: `${variant.label} requested ${CODEC_LABELS[variant.requestedCodec]}, which this build's encoder does not provide. It will be compressed with ${CODEC_LABELS[codec]} instead.`,
     },
   };
 }

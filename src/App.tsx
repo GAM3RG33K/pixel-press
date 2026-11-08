@@ -13,8 +13,6 @@ import { CompressView } from "@/features/compress/CompressView";
 import { CompareView } from "@/features/compare/CompareView";
 import { AuditView } from "@/features/audit/AuditView";
 import { OptimizeView } from "@/features/optimize/OptimizeView";
-import { EngineCheckCard } from "@/features/status/EngineCheckCard";
-import { AiSettingsCard } from "@/features/settings/AiSettingsCard";
 import { DiagnosticsFab } from "@/features/diagnostics/DiagnosticsFab";
 import { SetupScreen } from "@/features/setup/SetupScreen";
 import { isTauri, tauriApi } from "@/lib/tauri";
@@ -121,28 +119,18 @@ export default function App() {
           })}
         </nav>
 
-        {/* Hero / intro */}
+        {/* Hero / slim intro — only on Compress; the tool is the hero */}
         {tab === "compress" ? (
-          <section className="mt-6 flex flex-wrap items-end justify-between gap-4">
-            <div className="max-w-2xl">
-              <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs text-muted-foreground backdrop-blur">
-                <Zap className="size-3.5 text-primary" aria-hidden />
-                Local-first · No uploads · No telemetry
-              </span>
-              <h1 className="mt-3 text-balance text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-                Ship smaller video,{" "}
-                <span className="text-primary">straight from your browser</span>.
-              </h1>
-              <p className="mt-2 max-w-xl text-base text-muted-foreground">
-                pixel-press uses FFmpeg compiled to WebAssembly on your device.
-                Drop a clip, describe the goal, get production-ready
-                <code className="mx-1 rounded bg-secondary px-1.5 py-0.5 font-mono text-xs">mp4</code>
-                and
-                <code className="mx-1 rounded bg-secondary px-1.5 py-0.5 font-mono text-xs">webm</code>
-                outputs — with code you can paste.
-              </p>
-            </div>
-          </section>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-[11px] text-muted-foreground backdrop-blur">
+              <Zap className="size-3.5 text-primary" aria-hidden />
+              Local-first · No uploads · No telemetry
+            </span>
+            <p className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+              Ship smaller video,{" "}
+              <span className="text-primary">straight from your own machine</span>.
+            </p>
+          </div>
         ) : null}
 
         {/* Active workbench */}
@@ -159,11 +147,6 @@ export default function App() {
           All processing happens on your device. Output size and savings estimates appear on encode completion. Nothing you drop ever leaves this tab.
         </div>
 
-        {/* Engine diagnostics and local AI settings visible on all tabs */}
-        <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <EngineCheckCard />
-          <AiSettingsCard />
-        </div>
       </main>
 
       <DiagnosticsFab />

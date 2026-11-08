@@ -1,9 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use tauri::{AppHandle, Manager};
+use tauri_plugin_fs::FsExt;
 use tauri_plugin_dialog::DialogExt;
 
 mod setup;
+mod llm;
+mod encode;
 
 fn main() {
     tauri::Builder::default()
@@ -27,13 +30,23 @@ fn main() {
             setup::check_for_llm_at,
             setup::resolve_tool,
             setup::remove_file,
+            plan_intent,
+            encode::encode_paths,
+            encode::encode_video,
+            encode::abort_encode,
+            encode::ffmpeg_encoders,
+            encode::cleanup_encode_dir,
+            reveal_path,
+            allow_file_path,
+            next_available_path,
         ])
         .setup(|app| {
             let path = app
                 .path()
                 .app_data_dir()
                 .expect("failed to resolve app data dir");
-            std::fs::create_dir_all(&path).expect("could not create app data dir");
+            std::fs::create_dir_all(path.join("bin")).expect("could not create bin dir");
+            std::fs::create_dir_all(path.join("models")).expect("could not create models dir");
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -259,7 +272,100 @@ fn get_app_config_dir(app: AppHandle) -> Result<String, String> {
     Ok(p.to_string_lossy().into_owned())
 }
 
-fn resolve_exe(app: &AppHandle, name: &str) -> Option<String> {
+/// Grant the frontend fs scope read access to a single user-dropped file.
+/// Used by native drag-and-drop: the user picks a file outside $APPDATA, so we
+/// explicitly allow that one path for this session instead of widening the scope.
+#[tauri::command]
+fn allow_file_path(app: AppHandle, path: String) -> Result<bool, String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err(format!("file does not exist: {path}"));
+    }
+    app.fs_scope()
+        .allow_file(p)
+        .map_err(|e| format!("fs scope grant failed for {path}: {e}"))?;
+    Ok(true)
+}
+
+/// If `path` exists, return a sibling with `_2`/`_3`/… appended before the
+/// extension. Otherwise return `path` unchanged. Used to never overwrite a
+/// user's previous optimize output.
+#[tauri::command]
+fn next_available_path(path: String) -> Result<String, String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Ok(path);
+    }
+    let parent = p.parent().map(|x| x.to_string_lossy().into_owned()).unwrap_or_else(|| ".".into());
+    let stem = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "out".into());
+    let ext = p.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    for i in 2..1000 {
+        let candidate = std::path::Path::new(&parent).join(format!("{stem}_{i}{ext}"));
+        if !candidate.exists() {
+            return Ok(candidate.to_string_lossy().into_owned());
+        }
+    }
+    Err(format!("could not find a free filename for {path}"))
+}
+
+#[tauri::command]
+fn reveal_path(path: String) -> Result<bool, String> {
+    let p = std::path::Path::new(&path);
+    let args: Vec<String> = if cfg!(target_os = "macos") {
+        if p.is_dir() { vec!["-R".to_string()] } else { vec!["-R".to_string()] }
+    } else if cfg!(target_os = "windows") {
+        if p.is_dir() { vec![path.clone()] } else { vec![format!("/select,{path}")] }
+    } else {
+        vec![p.parent().unwrap_or(p).to_string_lossy().into_owned()]
+    };
+    let program = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(target_os = "windows") {
+        "explorer.exe"
+    } else {
+        "xdg-open"
+    };
+    let mut cmd = std::process::Command::new(program);
+    if cfg!(target_os = "windows") {
+        cmd.args(&args);
+    } else if cfg!(target_os = "macos") {
+        cmd.arg(args[0].clone()).arg(&path);
+    } else {
+        cmd.arg(&args[0]);
+    }
+    let status = cmd.status().map_err(|e| format!("reveal failed: {e}"))?;
+    Ok(status.success())
+}
+
+#[tauri::command]
+async fn plan_intent(app: AppHandle, metadata: llm::VideoMetadata, intent: Option<String>, request_id: Option<String>) -> Result<CompressionPlanJson, String> {
+    let app_clone = app.clone();
+    let plan = tokio::task::spawn_blocking(move || llm::plan_intent(&app_clone, metadata, intent, request_id))
+        .await
+        .map_err(|e| format!("inference task failed to join: {e}"))??;
+    Ok(CompressionPlanJson {
+        target_codec: plan.target_codec,
+        crf: plan.crf,
+        two_pass: plan.two_pass,
+        preserve_keyframes: plan.preserve_keyframes,
+        audio_handling: plan.audio_handling,
+        preserve_fps: plan.preserve_fps,
+        rule_source: plan.rule_source,
+    })
+}
+
+#[derive(serde::Serialize)]
+pub struct CompressionPlanJson {
+    pub target_codec: String,
+    pub crf: u32,
+    pub two_pass: Option<bool>,
+    pub preserve_keyframes: Option<bool>,
+    pub audio_handling: Option<String>,
+    pub preserve_fps: Option<bool>,
+    pub rule_source: Option<String>,
+}
+
+pub(crate) fn resolve_exe(app: &AppHandle, name: &str) -> Option<String> {
         let bin = setup::bin_dir(app);
     let candidates = if cfg!(windows) {
         vec![bin.join(format!("{name}.exe")), bin.join(name)]

@@ -1,7 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="113" ry="113" fill="#0b0b0f"/>
-  <rect x="128" y="128" width="256" height="256" rx="46" ry="46" fill="#7c3aed"/>
-  <polygon points="174.08,204.8 337.92,204.8 256,256" fill="white"/>
-  <rect x="230.4" y="174.08" width="51.2" height="30.72" fill="white"/>
-  <rect x="153.6" y="291.84" width="204.8" height="20.48" fill="white"/>
+  <!--
+    pixel-press — "The Press"
+    Three scan bars compress into a single violet press plate.
+    Design tokens:
+      badge  #0D0D12 (near-black)
+      bars   #FFFFFF (pure white)
+      plate  #8B5CF6 (press violet)
+  -->
+  <rect width="512" height="512" rx="113" ry="113" fill="#0D0D12"/>
+  <rect x="124" y="146" width="264" height="48" rx="10" fill="#FFFFFF"/>
+  <rect x="164" y="214" width="184" height="48" rx="10" fill="#FFFFFF"/>
+  <rect x="204" y="282" width="104" height="48" rx="10" fill="#FFFFFF"/>
+  <rect x="100" y="352" width="312" height="54" rx="12" fill="#8B5CF6"/>
 </svg>

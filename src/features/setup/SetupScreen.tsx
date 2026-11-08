@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Download, Loader2, Terminal, RefreshCw } from "lucide-react";
 import type { FfmpegStatus } from "@/lib/tauri";
-import { tauriApi } from "@/lib/tauri";
+import { isTauri, tauriApi } from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
 
 interface RequiredTool {
@@ -100,12 +100,15 @@ export function SetupScreen({ onReady }: SetupScreenProps) {
   useEffect(() => {
     void refresh();
     let unlisten: UnlistenFn | undefined;
+    if (!isTauri()) {
+      return undefined;
+    }
     listen<[string, number]>("setup-progress", (event) => {
       const [toolId, bytes] = event.payload;
       setProgress((p) => ({ ...p, [toolId]: bytes }));
     }).then((fn) => {
       unlisten = fn;
-    });
+    }).catch(() => undefined);
     return () => {
       unlisten?.();
     };

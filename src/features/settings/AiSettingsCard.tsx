@@ -10,7 +10,7 @@ import {
   type AIMode,
   type UserPreferences,
 } from "@/lib/settings";
-import { isTauri, listLlmCandidates, downloadLlm, checkLlm, type LlmCandidate } from "@/lib/tauri";
+import { isTauri, listLlmCandidates, downloadLlm, checkLlm, planWithNativeLlm, type LlmCandidate } from "@/lib/tauri";
 import { downloadModel, isModelCached, deleteModelFromCache } from "@/lib/ai/webllm";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +42,9 @@ export function AiSettingsCard() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [llmReady, setLlmReady] = useState<boolean | null>(null);
   const [llmSpec, setLlmSpec] = useState<LlmCandidate | null>(null);
+  const [isInferring, setIsInferring] = useState(false);
+  const [inferencePlan, setInferencePlan] = useState<string | null>(null);
+  const [streamText, setStreamText] = useState("");
 
   useEffect(() => {
     loadPreferences().then((loaded) => {
@@ -49,12 +52,15 @@ export function AiSettingsCard() {
       setSelected(loaded.aiMode);
     });
     refresh();
-    const unlisten = listen<[string, number]>("download-progress", (event) => {
-      if (event.payload[0] === "llm:smollm2-360m") {
-        setDownloadProgress(event.payload[1]);
-      }
-    });
-    return () => { void unlisten.then((fn) => fn()); };
+    let unlisten: (() => void) | undefined;
+    if (isTauri()) {
+      listen<[string, number]>("download-progress", (event) => {
+        if (event.payload[0] === "llm:smollm2-360m") {
+          setDownloadProgress(event.payload[1]);
+        }
+      }).then((fn) => { unlisten = fn; }).catch(() => undefined);
+    }
+    return () => { unlisten?.(); };
   }, []);
 
   const refresh = async () => {
@@ -92,17 +98,19 @@ export function AiSettingsCard() {
         await refresh();
       } catch (e) {
         setStatus(`Download failed: ${e instanceof Error ? e.message : String(e)}`);
-      } finally {
         setIsDownloading(false);
         setDownloadProgress(null);
-        window.setTimeout(() => setStatus(null), 2500);
+        return; // keep the error visible; do not auto-clear
       }
+      setIsDownloading(false);
+      setDownloadProgress(null);
+      window.setTimeout(() => setStatus(null), 2500);
       return;
     }
 
     // Fallback: WebLLM path (web-only build)
     setIsDownloading(true);
-    setStatus('Downloading model to browser cache…');
+    setStatus('Downloading model…');
     try {
       const result = await downloadModel('smollm2-360m', ({ progress }) => {
         setDownloadProgress(progress);
@@ -207,7 +215,50 @@ export function AiSettingsCard() {
           {llmReady ? (
             <>
               <span className="opacity-90">{llmSpec?.source_url ?? 'Model on disk.'}</span>
-              <Button size="sm" variant="outline" onClick={handleDelete}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  setIsInferring(true);
+                  setInferencePlan(null);
+                  setStreamText("");
+                  setStatus(null);
+                  try {
+                    const plan = await planWithNativeLlm({
+                      id: "test-1",
+                      fileName: "sample.mp4",
+                      fileSize: 1024 * 1024 * 50,
+                      duration: 30,
+                      container: "mp4",
+                      videoCodec: "h264",
+                      width: 1280,
+                      height: 720,
+                      fps: 30,
+                      bitrate: 4_000_000,
+                      pixelFormat: "yuv420p",
+                      hasAudio: true,
+                    }, "compress for web", (piece) => {
+                      setStreamText((prev) => prev + piece);
+                    });
+                    setInferencePlan(JSON.stringify(plan, null, 2));
+                  } catch (e) {
+                    setStatus(`Inference failed: ${e instanceof Error ? e.message : String(e)}`);
+                  } finally {
+                    setIsInferring(false);
+                  }
+                }}
+                disabled={!llmReady || isInferring}
+              >
+                {isInferring ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                    Running inference…
+                  </>
+                ) : (
+                  'Try inference'
+                )}
+              </Button>
+            <Button size="sm" variant="outline" onClick={handleDelete}>
                 <Trash2 className="size-4" aria-hidden />
                 Remove
               </Button>
@@ -224,6 +275,29 @@ export function AiSettingsCard() {
                 : `Download ${Math.round(totalBytes / 1024 / 1024)} MB`}
             </Button>
           )}
+        </div>
+      ) : null}
+
+      {isInferring ? (
+        <div className="mt-2 rounded-lg border border-border bg-background/60 p-2">
+          <p className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <Loader2 className="size-3 animate-spin" aria-hidden />
+            Live model output
+          </p>
+          <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-snug text-muted-foreground">
+            {streamText || "…"}
+          </pre>
+        </div>
+      ) : null}
+
+      {inferencePlan ? (
+        <div className="mt-2 rounded-lg border border-border bg-background/60 p-2">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            LLM proposed plan
+          </p>
+          <pre className="max-h-44 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-snug text-foreground">
+            {inferencePlan}
+          </pre>
         </div>
       ) : null}
 
@@ -245,7 +319,7 @@ export function AiSettingsCard() {
       </div>
 
       {status ? (
-        <p className="mt-2 text-[11px] text-muted-foreground" role="status">{status}</p>
+        <p className="mt-2 break-words text-[11px] text-muted-foreground" role="status">{status}</p>
       ) : null}
     </section>
   );

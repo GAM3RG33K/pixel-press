@@ -233,7 +233,7 @@ export function AuditView({ onSendToOptimize }: AuditViewProps) {
             <li>· Audio track on a muted decoration</li>
           </ul>
           <p className="mt-3 leading-snug">
-            Source text never leaves this browser. File contents are scanned
+            Source text never leaves this device. File contents are scanned
             with a local regex engine, no uploads.
           </p>
         </div>
@@ -243,7 +243,7 @@ export function AuditView({ onSendToOptimize }: AuditViewProps) {
           <p className="mt-2 leading-snug">
             Audits source files only (.html/.jsx/.tsx/.vue/.svelte/.astro).
             Rendered-size heuristics from the upstream skill require a live
-            URL, which the PWA does not access.
+            URL, which the app does not access.
           </p>
         </div>
       </aside>

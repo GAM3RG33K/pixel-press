@@ -8,6 +8,7 @@ import {
   type IsolationState,
 } from "@/lib/coi";
 import { cn } from "@/lib/utils";
+import { isTauri } from "@/lib/tauri";
 
 export interface StatusPillProps {
   className?: string;
@@ -36,31 +37,41 @@ export function StatusPill({ className }: StatusPillProps) {
     });
   }, []);
 
-  const engineDot =
-    caps.isolation === "isolated"
+  const native = isTauri();
+  const engineDot = native
+    ? "bg-success"
+    : caps.isolation === "isolated"
       ? "bg-success"
       : caps.isolation === "not-isolated"
         ? "bg-warning"
         : "bg-muted-foreground/50";
 
-  const engineLabel =
-    caps.isolation === "isolated"
+  const engineLabel = native
+    ? "Native FFmpeg"
+    : caps.isolation === "isolated"
       ? "Multi-Threaded Ready"
       : caps.isolation === "not-isolated"
         ? "Single-Threaded Safe Mode"
         : "Engine Unknown";
 
-  const engineTitle =
-    caps.isolation === "isolated"
+  const engineTitle = native
+    ? "Encoding runs natively on this device via your downloaded FFmpeg."
+    : caps.isolation === "isolated"
       ? "Cross-origin isolated; SharedArrayBuffer available for multi-threaded FFmpeg."
       : caps.isolation === "not-isolated"
         ? "No cross-origin isolation; FFmpeg runs on a single thread. Encoding will be slower."
         : "FFmpeg has not reported its capabilities yet.";
 
-  const aiLabel = caps.webGpu ? "Rule Mode · WebGPU Ready" : "Instant Rule Mode";
-  const aiTitle = caps.webGpu
-    ? "A local model can be enabled; WebGPU is available."
-    : "Rule engine only. No model download required; WebGPU unavailable.";
+  const aiLabel = native
+    ? "Rule Mode · On-device AI optional"
+    : caps.webGpu
+      ? "Rule Mode · WebGPU Ready"
+      : "Instant Rule Mode";
+  const aiTitle = native
+    ? "Deterministic rule engine by default; optional on-device AI can be enabled in Settings."
+    : caps.webGpu
+      ? "A local model can be enabled; WebGPU is available."
+      : "Rule engine only. No model download required; WebGPU unavailable.";
 
   return (
     <div

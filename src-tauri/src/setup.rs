@@ -278,6 +278,13 @@ pub async fn download_file(
         return Err(format!("sha256 mismatch: got {got}"));
     }
 
+    // Ensure the destination directory exists before moving the verified file.
+    if let Some(parent) = Path::new(&dest).parent() {
+        fs::create_dir_all(parent)
+            .await
+            .map_err(|e| format!("create {}: {e}", parent.display()))?;
+    }
+
     fs::rename(&tmp_path, &dest)
         .await
         .map_err(|e| format!("rename {tmp_path:?} → {dest}: {e}"))?;

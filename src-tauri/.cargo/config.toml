@@ -1,0 +1,7 @@
+# Pin the minimum deployment target so the vendored llama.cpp / ggml sources
+# can use std::filesystem (requires macOS 10.15+). `cargo tauri build` does
+# not forward MACOSX_DEPLOYMENT_TARGET/BINDGEN_* into the build-script
+# environment, so these live here instead of in a shell profile.
+[env]
+MACOSX_DEPLOYMENT_TARGET = "10.15"
+BINDGEN_EXTRA_CLANG_ARGS = "-mmacosx-version-min=10.15"

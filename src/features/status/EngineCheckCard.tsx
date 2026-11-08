@@ -31,6 +31,16 @@ export function EngineCheckCard() {
   async function runCheck() {
     setState({ status: "loading" });
     try {
+      if (isTauri()) {
+        const { nativeCapabilities } = await import("@/lib/ffmpeg/native-engine");
+        const capabilities = await nativeCapabilities();
+        setState({
+          status: "ready",
+          multithreaded: true,
+          capabilities,
+        });
+        return;
+      }
       const { getFfmpegService } = await import("@/lib/ffmpeg/service");
       const service = getFfmpegService();
       const engine = await service.load();
@@ -81,8 +91,9 @@ export function EngineCheckCard() {
             Engine diagnostics
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Download the WASM core once and report the available encoders. The
-            core is cached by the browser afterward.
+            {isTauri()
+              ? "Run the downloaded native FFmpeg and report its available encoders."
+              : "Download the WASM core once and report the available encoders."}
           </p>
         </div>
         <Button
@@ -141,7 +152,7 @@ export function EngineCheckCard() {
         <div className="mt-4 rounded-lg border border-info/30 bg-info/5 p-3 text-xs text-info">
           <p className="font-medium">Running in Tauri (native engine)</p>
           <p className="mt-1 opacity-90">
-            The web-WASM engine below is not required — native FFmpeg already works here.
+            Encodes run on the downloaded native FFmpeg — the WASM core is not used in this app.
           </p>
           <Button
             size="sm"

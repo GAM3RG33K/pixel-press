@@ -19,7 +19,7 @@ export const PRESETS: Preset[] = [
   {
     id: "universal-h264",
     label: "Universal H.264 MP4",
-    description: "Broad compatibility fallback for all browsers",
+    description: "Broad compatibility fallback for all devices",
     intent: "make this universally compatible, h264 mp4",
   },
   {

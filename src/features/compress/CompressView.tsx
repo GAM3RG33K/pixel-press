@@ -14,7 +14,18 @@ import {
 import type { EncoderCapabilities, VideoMetadata } from "@/types/media";
 import { Button } from "@/components/ui/button";
 import { DropZone } from "@/components/DropZone";
+import { StageCard } from "@/components/stage-card";
 import { getFfmpegService } from "@/lib/ffmpeg/service";
+import {
+  isNativeEngine,
+  nativeStageInput,
+  nativeProbeStaged,
+  nativeCapabilities,
+  nativeEncodeFile,
+  nativeOutPath,
+  nativeReadAndRemove,
+  type NativeStagedInput,
+} from "@/lib/ffmpeg/native-engine";
 import {
   buildVideoSnippet,
   buildPosterPath,
@@ -26,7 +37,7 @@ import {
   estimateSizeBytes,
 } from "@/lib/workflow";
 import { useAiMode } from "@/lib/ai/use-ai-mode";
-import { planWithAI } from "@/lib/ai/webllm";
+import { resolvePlan } from "@/lib/ai/plan";
 import { fetchSampleClip } from "@/lib/sample";
 import { diag, captureError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
@@ -55,6 +66,9 @@ export function CompressView() {
   const [copied, setCopied] = useState<"html" | "jsx" | null>(null);
   const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const [stageProgress, setStageProgress] = useState<import("@/components/stage-card").StageProgressState | null>(null);
+  /** Temp copy of the selected file, staged once per selection. */
+  const stagedRef = useRef<NativeStagedInput | null>(null);
 
   const currentPlan = useMemo(() => buildVariantPlan(intentText, metadata), [intentText, metadata]);
   const aiMode = useAiMode();
@@ -68,7 +82,7 @@ export function CompressView() {
 
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      planWithAI(metadata, intentText, aiMode).then((result) => {
+      resolvePlan(metadata, intentText, aiMode).then((result) => {
         if (!cancelled) {
           setAiPlan({ plan: result.plan, used: result.used });
         }
@@ -110,6 +124,7 @@ export function CompressView() {
         name: normalized.name,
         stack: normalized.stack,
       });
+      setStageProgress(null);
       setError(normalized.message);
       setStatus("error");
     }
@@ -127,16 +142,35 @@ export function CompressView() {
     setCapabilities(null);
 
     try {
-      const service = getFfmpegService();
-      const result = await service.probe({
-        input: incoming,
-        fileName: incoming.name,
-        signal: abortRef.current.signal,
-      });
-      setMetadata(result.metadata);
+      let metadataResult;
+      if (isNativeEngine()) {
+        if (stagedRef.current) {
+          const oldDir = stagedRef.current.dir;
+          void import("@tauri-apps/api/core").then((m) => m.invoke("cleanup_encode_dir", { path: oldDir }));
+          stagedRef.current = null;
+        }
+        const stagingStarted = performance.now();
+        setStageProgress({ copied: 0, total: incoming.size, startedAt: stagingStarted });
+        const staged = await nativeStageInput(
+          incoming,
+          `${incoming.name.replace(/\.[^./]+$/, "") || "video"}-optimized.mp4`,
+          (copied, total) => setStageProgress({ copied, total, startedAt: stagingStarted }),
+        );
+        stagedRef.current = staged;
+        metadataResult = await nativeProbeStaged(staged, incoming.name, incoming.size);
+        setCapabilities(await nativeCapabilities().catch(() => null));
+      } else {
+        const service = getFfmpegService();
+        metadataResult = await service.probe({
+          input: incoming,
+          fileName: incoming.name,
+          signal: abortRef.current.signal,
+        });
+        service.getCapabilities().then(setCapabilities).catch(() => undefined);
+      }
+      setMetadata(metadataResult.metadata);
+      setStageProgress(null);
       setStatus("ready");
-
-      service.getCapabilities().then(setCapabilities).catch(() => undefined);
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") {
         diag.info('compress', 'probe aborted by user');
@@ -165,36 +199,70 @@ export function CompressView() {
     const base = file.name.replace(/\.[^./]+$/, "") || "video";
 
     const variantsToEncode = variantSet?.variants ?? [];
+    const useNative = isNativeEngine();
     try {
-      const service = getFfmpegService();
+      const service = useNative ? null : getFfmpegService();
       const encoded: OutputFile[] = [];
 
       for (const variant of variantsToEncode) {
         if (abortRef.current.signal.aborted) return;
         const outName =
           variant.container === "webm" ? `${base}-webm.webm` : `${base}-h264.mp4`;
-        const encodedResult = await service.encode({
-          input: file,
-          inputFileName: file.name,
-          outputFileName: outName,
-          codec: variant.codec,
-          crf: variant.crf,
-          ...(variant.targetScale
-            ? {
-                width: variant.targetScale.width,
-                height: variant.targetScale.height,
-              }
-            : {}),
-          stripAudio: variant.stripAudio,
-          faststart: variant.container === "mp4",
-          durationSeconds: metadata.duration,
-          onProgress: ({ progress: p }) => setProgress(p),
-          signal: abortRef.current.signal,
-        });
+
+        let encodedResult;
+        if (useNative) {
+          const staged = stagedRef.current ?? (await nativeStageInput(file, outName));
+          if (!stagedRef.current) stagedRef.current = staged;
+          const outPath = nativeOutPath(staged, outName);
+          const done = await nativeEncodeFile({
+            inputPath: staged.tmpPath,
+            outputPath: outPath,
+            codec: variant.codec,
+            crf: variant.crf,
+            ...(variant.targetScale
+              ? {
+                  width: variant.targetScale.width,
+                  height: variant.targetScale.height,
+                }
+              : {}),
+            stripAudio: variant.stripAudio,
+            faststart: variant.container === "mp4",
+            durationSeconds: metadata.duration,
+            onProgress: (p) => setProgress(p),
+            signal: abortRef.current.signal,
+          });
+          const bytes = await nativeReadAndRemove(outPath);
+          encodedResult = {
+            data: bytes,
+            outputFileName: outName,
+            durationMs: done.durationMs,
+            sizeBytes: done.sizeBytes,
+            log: done.log,
+          };
+        } else {
+          encodedResult = await service!.encode({
+            input: file,
+            inputFileName: file.name,
+            outputFileName: outName,
+            codec: variant.codec,
+            crf: variant.crf,
+            ...(variant.targetScale
+              ? {
+                  width: variant.targetScale.width,
+                  height: variant.targetScale.height,
+                }
+              : {}),
+            stripAudio: variant.stripAudio,
+            faststart: variant.container === "mp4",
+            durationSeconds: metadata.duration,
+            onProgress: ({ progress: p }) => setProgress(p),
+            signal: abortRef.current.signal,
+          });
+        }
 
         if (variant.codec !== variant.requestedCodec) {
           setFallbackNotice(
-            `Requested ${variant.requestedCodec.toUpperCase()} but this browser only supports H.264 — encoded as H.264.`,
+            `Requested ${variant.requestedCodec.toUpperCase()}, which this build's encoder does not provide — encoded as ${variant.codec.toUpperCase()} instead.`,
           );
         }
 
@@ -284,7 +352,7 @@ export function CompressView() {
         <p className="text-sm text-muted-foreground">
           Drop a video, tell us your goal in plain language, and the local rule
           engine (or optional AI) will pick the right codec, CRF and handling —
-          then encode right here in your browser.
+          then encode right here on this device.
         </p>
 
         {!file ? (
@@ -298,7 +366,16 @@ export function CompressView() {
               Try with a sample clip (downloads from Wikimedia, ~1.8 MB)
             </button>
           </>
-        ) : (
+        ) : null}
+
+        {status === "probing" && file ? (
+          <StageCard
+            file={file}
+            stageProgress={stageProgress}
+          />
+        ) : null}
+
+        {file && status !== "probing" ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/50 p-4 backdrop-blur">
             <div className="min-w-0">
               <p className="flex items-center gap-2 font-medium">
@@ -310,12 +387,19 @@ export function CompressView() {
                 {metadata ? ` · ${metadata.width}×${metadata.height} · ${metadata.duration.toFixed(1)}s · ${metadata.videoCodec}${metadata.hasAudio ? " · audio" : ""}` : " · probing…"}
               </p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => { setFile(null); setMetadata(null); setOutputs([]); setStatus("idle"); }}>
+            <Button variant="ghost" size="sm" onClick={() => {
+              if (stagedRef.current) {
+                const dir = stagedRef.current.dir;
+                void import("@tauri-apps/api/core").then((m) => m.invoke("cleanup_encode_dir", { path: dir }));
+                stagedRef.current = null;
+              }
+              setFile(null); setMetadata(null); setOutputs([]); setStatus("idle");
+            }}>
               <Trash2 className="size-4" aria-hidden />
               Clear
             </Button>
           </div>
-        )}
+        ) : null}
 
         {metadata ? (
           <>
@@ -354,16 +438,33 @@ export function CompressView() {
               {resolvedPlan.ruleSource ? (
                 <p className="mt-3 text-xs text-muted-foreground">
                   <Zap className="mr-1 inline size-3 text-warning" aria-hidden />
-                  Plan: {resolvedPlanLabel}
+                  Plan:{" "}
+                  <span className="cursor-help underline decoration-dotted underline-offset-2" title={resolvedPlan.ruleSource}>
+                    {resolvedPlanLabel}
+                  </span>
                   {removeAudioPlanned ? " · strip audio" : ""}
                 </p>
               ) : null}
             </div>
 
+            <Button
+              size="lg"
+              onClick={encodeNow}
+              disabled={status === "encoding" || !file || !metadata}
+              className="self-stretch sm:self-start sm:min-w-56"
+            >
+              {status === "encoding" ? (
+                <Loader2 className="size-5 animate-spin" aria-hidden />
+              ) : (
+                <Play className="size-5" aria-hidden />
+              )}
+              {status === "encoding" ? "Encoding…" : "Compress now"}
+            </Button>
+
             <ProgressBar
               progress={progress}
               active={status === "encoding"}
-              label={status === "encoding" ? "Encoding with FFmpeg WASM…" : status === "probing" ? "Probing with FFprobe…" : "Ready to encode"}
+              label={status === "encoding" ? "Encoding with native FFmpeg…" : status === "probing" ? "Probing with FFprobe…" : "Ready to encode"}
             />
           </>
         ) : null}
@@ -390,11 +491,27 @@ export function CompressView() {
           </p>
         ) : null}
 
+        {outputs.length > 0 ? (() => {
+          const outTotal = outputs.reduce((sum, o) => sum + o.sizeBytes, 0);
+          const inTotal = metadata ? metadata.fileSize * outputs.length : 0;
+          const savedBytes = Math.max(0, inTotal - outTotal);
+          const savedPct = inTotal > 0 ? Math.round((savedBytes / inTotal) * 100) : 0;
+          return (
+            <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-3 text-sm text-success" role="status">
+              <CheckCircle2 className="size-5 shrink-0" aria-hidden />
+              <p className="min-w-0">
+                <span className="font-semibold">Done.</span>{" "}
+                You saved ~{(savedBytes / 1024 / 1024).toFixed(1)} MB ({savedPct}% smaller than the source) across {outputs.length} output{outputs.length === 1 ? "" : "s"} — all encoded on this device.
+              </p>
+            </div>
+          );
+        })() : null}
+
         {outputs.length > 0 ? (
           <div className="overflow-hidden rounded-xl border border-border bg-card/50 backdrop-blur">
             <div className="border-b border-border/60 px-4 py-2.5 text-sm font-medium">
               Encoded outputs
-              <span className="ml-2 text-xs font-normal text-muted-foreground">compressed locally · in this browser</span>
+              <span className="ml-2 text-xs font-normal text-muted-foreground">compressed locally · on this device</span>
             </div>
             <ul className="divide-y divide-border/60">
               {outputs.map((output) => {
@@ -458,8 +575,8 @@ export function CompressView() {
           <h3 className="text-sm font-medium text-foreground">How this works</h3>
           <ol className="mt-2 list-decimal space-y-1.5 pl-4">
             <li>FFprobe reads duration, dimensions, fps and audio — entirely locally.</li>
-            <li>The deterministic rule engine (or optional WebLLM) maps metadata + intent to a codec/CRF plan.</li>
-            <li>FFmpeg WASM encodes the chosen variants in a Web Worker.</li>
+            <li>The deterministic rule engine (or the optional on-device AI) maps metadata + intent to a codec/CRF plan.</li>
+            <li>Native FFmpeg encodes the chosen variants on this device.</li>
             <li>Download the results or copy production-ready markup.</li>
           </ol>
         </div>
@@ -476,14 +593,6 @@ export function CompressView() {
               <li>VP9: {capabilities.libvpxVp9 ? "available" : "unavailable"}</li>
               <li>Threading: {capabilities.multiThreaded ? "multi-threaded" : "single-threaded"}</li>
             </ul>
-            <Button className="mt-3 w-full" variant="outline" size="sm" onClick={encodeNow} disabled={status === "encoding" || !file || !metadata}>
-              {status === "encoding" ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-              ) : (
-                <Play className="size-4" aria-hidden />
-              )}
-              {status === "encoding" ? "Encoding…" : "Compress now"}
-            </Button>
           </div>
         ) : (
           <div className="rounded-xl border border-border bg-card/50 p-4 text-xs text-muted-foreground backdrop-blur">

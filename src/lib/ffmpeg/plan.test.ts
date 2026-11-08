@@ -133,19 +133,19 @@ describe("uniqueFallbackNotices", () => {
         requestedCodec: "h265" as TargetCodec,
         actualCodec: "h264" as TargetCodec,
         message:
-          "This plan requested H.265 (HEVC), which this browser's encoder does not provide. It will be compressed with H.264 (AVC) instead.",
+          "This plan requested H.265 (HEVC), which this build's encoder does not provide. It will be compressed with H.264 (AVC) instead.",
       },
       {
         requestedCodec: "h265" as TargetCodec,
         actualCodec: "h264" as TargetCodec,
         message:
-          "This plan requested H.265 (HEVC), which this browser's encoder does not provide. It will be compressed with H.264 (AVC) instead.",
+          "This plan requested H.265 (HEVC), which this build's encoder does not provide. It will be compressed with H.264 (AVC) instead.",
       },
       {
         requestedCodec: "vp9" as TargetCodec,
         actualCodec: "h264" as TargetCodec,
         message:
-          "This plan requested VP9, which this browser's encoder does not provide. It will be compressed with H.264 (AVC) instead.",
+          "This plan requested VP9, which this build's encoder does not provide. It will be compressed with H.264 (AVC) instead.",
       },
     ];
     const unique = uniqueFallbackNotices(notices);

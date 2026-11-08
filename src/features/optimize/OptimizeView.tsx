@@ -5,19 +5,32 @@ import {
   FileCode2,
   FileVideo,
   Loader2,
+  Square,
   Trash2,
   Zap,
 } from "lucide-react";
 import type { VideoMetadata } from "@/types/media";
 import { Button } from "@/components/ui/button";
 import { getFfmpegService } from "@/lib/ffmpeg/service";
+import { isNativeEngine, nativeProbe, nativeEncode, nativeEncodeFile } from "@/lib/ffmpeg/native-engine";
+import { isTauri, tauriApi } from "@/lib/tauri";
+import { parseFfprobeJson } from "@/lib/ffmpeg/ffprobe-parser";
+import { useAiMode } from "@/lib/ai/use-ai-mode";
+import { resolvePlan } from "@/lib/ai/plan";
 import { diag, captureError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
 import { buildVideoSnippet } from "@/lib/snippet";
 
 interface OptimizeCandidate {
-  file: File;
+  /** Browser flow only: the picked File. */
+  file?: File | undefined;
   filePath: string;
+  /** Tauri flow: absolute path on disk. */
+  absolutePath?: string;
+  /** Tauri flow: path relative to the picked folder root. */
+  relPath?: string;
+  size: number;
+  name: string;
   tagIndex: number;
   line: number;
   sourceFilePath: string;
@@ -26,8 +39,12 @@ interface OptimizeCandidate {
   /** Optional metadata if we probed this file. */
   metadata?: VideoMetadata | undefined;
   status: "pending" | "encoding" | "done" | "failed" | "skipped";
+  /** 0–100 while encoding (real-time from encoder output). */
+  progress?: number | undefined;
   outputFileName?: string | undefined;
   outputBlob?: Blob | undefined;
+  /** Tauri flow: absolute path of the produced file. */
+  outputAbsPath?: string;
   error?: string | undefined;
 }
 
@@ -36,9 +53,59 @@ export function OptimizeView() {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [zipping, setZipping] = useState(false);
+  const [optimizeIntent, setOptimizeIntent] = useState("");
+  const [pickedDir, setPickedDir] = useState<string | null>(null);
+  const [outputRoot, setOutputRoot] = useState<string | null>(null);
+  const pickedDirRef = useRef<string | null>(null);
+  const outputRootRef = useRef<string | null>(null);
+  const aiMode = useAiMode();
   const abortRef = useRef<AbortController | null>(null);
+  /** Set when the user cancels a bulk run; checked between queue iterations. */
+  const bulkCancelledRef = useRef(false);
 
   const handleDirectory = useCallback(async () => {
+    if (isTauri()) {
+      try {
+        const dir = await tauriApi.pickFolder();
+        if (!dir) return;
+        pickedDirRef.current = dir;
+        setPickedDir(dir);
+        outputRootRef.current = null;
+        setOutputRoot(null);
+
+        const entries = await tauriApi.fsReadDir(dir);
+        const sep = dir.includes(String.fromCharCode(92)) ? String.fromCharCode(92) : "/";
+        const normDir = dir.endsWith(sep) ? dir : dir + sep;
+        const videos = entries.filter(
+          (entry) => entry.kind === "file" && /\.(mp4|webm|mov|mkv|avi)$/i.test(entry.path),
+        );
+        const built: OptimizeCandidate[] = videos.map((entry) => {
+          const rel = entry.path.startsWith(normDir) ? entry.path.slice(normDir.length) : entry.path;
+          const name = entry.path.split(/[/\\]/).pop() ?? entry.path;
+          return {
+            filePath: rel,
+            relPath: rel,
+            absolutePath: entry.path,
+            size: entry.size,
+            name,
+            tagIndex: 0,
+            line: 1,
+            sourceFilePath: "local asset",
+            kind: "video" as const,
+            status: "pending" as const,
+          };
+        });
+        bulkCancelledRef.current = false;
+        setCandidates(built);
+        return;
+      } catch (caught) {
+        const normalized = captureError(caught);
+        diag.error('optimize', `native directory scan failed: ${normalized.message}`, { stack: normalized.stack });
+        setError(`Could not scan folder: ${normalized.message}`);
+        return;
+      }
+    }
+
     const picker = (window as unknown as {
       showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
     }).showDirectoryPicker;
@@ -91,6 +158,8 @@ export function OptimizeView() {
       candidates.push({
         file: f,
         filePath: path,
+        size: f.size,
+        name: f.name,
         tagIndex: 0,
         line: 1,
         sourceFilePath: "local asset",
@@ -99,43 +168,172 @@ export function OptimizeView() {
       });
     }
 
+    bulkCancelledRef.current = false;
     setCandidates(candidates);
   }, []);
 
-  const optimizeOne = useCallback(async (index: number): Promise<void> => {
+  const optimizeOne = useCallback(async (index: number, bulk: boolean = false): Promise<void> => {
     const candidate = candidates[index];
     if (!candidate) return;
 
     abortRef.current?.abort();
     abortRef.current = new AbortController();
 
+    const setItemProgress = (progress: number) => {
+      setCandidates((prev) =>
+        prev.map((c, i) => (i === index ? { ...c, progress: Math.max(0, Math.min(100, progress)) } : c)),
+      );
+    };
+
     try {
-      setCandidates((prev) => prev.map((c, i) => (i === index ? { ...c, status: "encoding" as const } : c)));
+      setCandidates((prev) =>
+        prev.map((c, i) =>
+          i === index ? { ...c, status: "encoding" as const, progress: 0 } : c,
+        ),
+      );
 
-      const service = getFfmpegService();
-      const base = candidate.file.name.replace(/\.[^./]+$/, "");
-      const outputName = `${base}-optimized.mp4`;
-      const encoded = await service.encode({
-        input: candidate.file,
-        inputFileName: candidate.file.name,
-        outputFileName: outputName,
-        codec: "h264",
-        crf: 26,
-        durationSeconds: 3,
-        stripAudio: true,
-        faststart: true,
+      const fileName = candidate.name;
+      const base = fileName.replace(/\.[^./]+$/, "");
+      const useNative = isNativeEngine();
+      const isFileMode = useNative && Boolean(candidate.absolutePath);
+
+      // Probe duration up front so percent progress is accurate (native ffprobe when available).
+      let durationSeconds = 3;
+      let metadata: import("@/types/media").VideoMetadata | null = null;
+      try {
+        if (isFileMode) {
+          const absPath = candidate.absolutePath!;
+          const raw = await tauriApi.ffprobeJson(absPath);
+          metadata = parseFfprobeJson(raw, fileName, candidate.size);
+          durationSeconds = Math.max(0.1, metadata.duration);
+        } else if (useNative && candidate.file) {
+          const probe = await nativeProbe(candidate.file, fileName);
+          metadata = probe.metadata;
+          durationSeconds = Math.max(0.1, probe.metadata.duration);
+        } else if (candidate.file) {
+          const probe = await getFfmpegService().probe({
+            input: candidate.file,
+            fileName,
+            signal: abortRef.current.signal,
+          });
+          metadata = probe.metadata;
+          durationSeconds = Math.max(0.1, probe.metadata.duration);
+        }
+      } catch (probeError) {
+        diag.warn("optimize", "duration probe failed — progress will be approximate", {
+          index,
+          error: probeError instanceof Error ? probeError.message : String(probeError),
+        });
+      }
+
+      // AI (when enabled) decides codec/CRF/audio per file; rule engine otherwise.
+      let codec: "h264" | "vp9" | "h265" = "h264";
+      let crf = 26;
+      let stripAudio = true;
+      if (metadata) {
+        const resolved = await resolvePlan(metadata, optimizeIntent.trim() || undefined, aiMode);
+        codec = resolved.plan.targetCodec;
+        crf = resolved.plan.crf;
+        stripAudio = resolved.plan.audioHandling === "strip";
+      }
+      const ext = codec === "vp9" ? "webm" : "mp4";
+      const planOutputName = `${base}_optimized.${ext}`;
+
+      if (isFileMode) {
+        // Bulk: folder mirror (pixel-pressed-{timestamp}/). Single: file_optimized.ext next to the source.
+        const rel = candidate.relPath ?? fileName;
+        const relDirOf = (p: string) =>
+          p.includes("/")
+            ? p.slice(0, p.lastIndexOf("/"))
+            : p.includes(String.fromCharCode(92))
+              ? p.slice(0, p.lastIndexOf(String.fromCharCode(92)))
+              : "";
+        let outAbsPath: string;
+        let displayOut = planOutputName;
+        const getFinalPath = async (p: string) => {
+          const { invoke } = await import("@tauri-apps/api/core");
+          return invoke<string>("next_available_path", { path: p });
+        };
+        if (bulk) {
+          const root = ensurePixelPressedRoot(pickedDirRef.current, outputRootRef.current);
+          outputRootRef.current = root;
+          setOutputRoot(root);
+          outAbsPath = await getFinalPath(joinRelative(root, rel, planOutputName));
+          const relDir = relDirOf(rel);
+          const finalName = outAbsPath.split(/[/\\]/).pop() ?? planOutputName;
+          displayOut = relDir ? `${relDir}/${finalName}` : finalName;
+        } else {
+          const absPath = candidate.absolutePath!;
+          const dir = absPath.includes(String.fromCharCode(92))
+            ? absPath.slice(0, absPath.lastIndexOf(String.fromCharCode(92)))
+            : absPath.slice(0, absPath.lastIndexOf("/"));
+          const sep = absPath.includes(String.fromCharCode(92)) ? String.fromCharCode(92) : "/";
+          outAbsPath = await getFinalPath(`${dir}${sep}${planOutputName}`);
+          displayOut = outAbsPath.split(/[/\\]/).pop() ?? planOutputName;
+        }
+        await nativeEncodeFile({
+          inputPath: candidate.absolutePath!,
+          outputPath: outAbsPath,
+          codec,
+          crf,
+          durationSeconds,
+          stripAudio,
+          faststart: ext === "mp4",
+          signal: abortRef.current.signal,
+          onProgress: setItemProgress,
+        });
+        const encodedBytes = await (await import("@tauri-apps/plugin-fs")).readFile(outAbsPath);
+        setCandidates((prev) =>
+          prev.map((c, i) =>
+            i === index
+              ? { ...c, status: "done" as const, progress: 100, outputFileName: displayOut, outputAbsPath: outAbsPath, outputBlob: new Blob([encodedBytes.buffer as ArrayBuffer]) }
+              : c,
+          ),
+        );
+        diag.info("optimize", "file encoded to pixel-pressed folder", { input: candidate.absolutePath, output: outAbsPath });
+        return;
+      }
+
+      const encodeArgs = {
+        input: candidate.file as Blob,
+        inputFileName: fileName,
+        outputFileName: planOutputName,
+        codec,
+        crf,
+        durationSeconds,
+        stripAudio,
+        faststart: ext === "mp4",
         signal: abortRef.current.signal,
-      });
+      };
 
-      const blob = new Blob([encoded.data as Uint8Array<ArrayBuffer>], { type: "video/mp4" });
+      const encoded = useNative
+        ? await nativeEncode({ ...encodeArgs, onProgress: setItemProgress })
+        : await getFfmpegService().encode({
+            ...encodeArgs,
+            onProgress: ({ progress }: { progress: number }) => setItemProgress(progress),
+          });
+
+      const blob = new Blob([encoded.data as Uint8Array<ArrayBuffer>], { type: planOutputName.endsWith(".webm") ? "video/webm" : "video/mp4" });
       setCandidates((prev) =>
         prev.map((c, i) =>
           i === index
-            ? { ...c, status: "done" as const, outputFileName: outputName, outputBlob: blob }
+            ? { ...c, status: "done" as const, progress: 100, outputFileName: planOutputName, outputBlob: blob }
             : c,
         ),
       );
     } catch (caught) {
+      const aborted =
+        (caught instanceof DOMException && caught.name === "AbortError") ||
+        (caught instanceof Error && /abort/i.test(caught.message));
+      if (aborted) {
+        diag.info("optimize", "candidate encode cancelled", { index });
+        setCandidates((prev) =>
+          prev.map((c, i) =>
+            i === index ? { ...c, status: "skipped" as const, progress: undefined } : c,
+          ),
+        );
+        return;
+      }
       const normalized = captureError(caught);
       const message = normalized.message;
       diag.error('optimize', `candidate encode failed: ${normalized.message}`, {
@@ -144,19 +342,25 @@ export function OptimizeView() {
       });
       setCandidates((prev) =>
         prev.map((c, i) =>
-          i === index ? { ...c, status: "failed" as const, error: message } : c,
+          i === index ? { ...c, status: "failed" as const, progress: undefined, error: message } : c,
         ),
       );
     }
   }, [candidates]);
 
   const optimizeAll = useCallback(async () => {
+    bulkCancelledRef.current = false;
     setWorking(true);
     setError(null);
     try {
       for (let i = 0; i < candidates.length; i += 1) {
-        if (candidates[i]?.status !== "pending") continue;
-        await optimizeOne(i);
+        if (bulkCancelledRef.current) {
+          diag.info("optimize", "bulk run cancelled by user");
+          break;
+        }
+        const st = candidates[i]?.status;
+        if (st !== "pending" && st !== "skipped" && st !== "failed") continue;
+        await optimizeOne(i, true);
         // Trigger a fresh scan by fresh identity
         setCandidates((prev) => [...prev]);
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -165,6 +369,17 @@ export function OptimizeView() {
       setWorking(false);
     }
   }, [candidates, optimizeOne]);
+
+  const cancelCurrent = useCallback(() => {
+    diag.info("optimize", "cancel requested for current encode");
+    abortRef.current?.abort();
+  }, []);
+
+  const cancelAll = useCallback(() => {
+    bulkCancelledRef.current = true;
+    diag.info("optimize", "cancel-all requested");
+    abortRef.current?.abort();
+  }, []);
 
   const downloadZip = useCallback(async () => {
     setZipping(true);
@@ -176,12 +391,13 @@ export function OptimizeView() {
       let totalOutBytes = 0;
 
       for (const c of candidates) {
-        totalInBytes += c.file.size;
+        totalInBytes += c.size;
+        const outName = c.outputFileName ?? `${c.name.replace(/\.[^./]+$/, "")}_optimized.mp4`;
         if (c.outputBlob) {
           totalOutBytes += c.outputBlob.size;
-          zip.file(c.outputFileName ?? `${c.file.name.replace(/\.[^./]+$/, "")}-optimized.mp4`, c.outputBlob);
+          zip.file(outName, c.outputBlob);
           manifest.push(
-            `${c.filePath}\n  -> ${c.outputFileName} (${c.file.size}B -> ${c.outputBlob.size}B)`,
+            `${c.filePath}\n  -> ${outName} (${c.size}B -> ${c.outputBlob.size}B)`,
           );
         }
       }
@@ -253,10 +469,27 @@ export function OptimizeView() {
     }
   }, [candidates]);
 
-  const totalBytes = useMemo(() => candidates.reduce((acc, c) => acc + c.file.size, 0), [candidates]);
+  const totalBytes = useMemo(() => candidates.reduce((acc, c) => acc + c.size, 0), [candidates]);
   const doneBytes = useMemo(() => candidates.reduce((acc, c) => acc + (c.outputBlob?.size ?? 0), 0), [candidates]);
   const doneCount = candidates.filter((c) => c.status === "done").length;
-  const pendingCount = candidates.filter((c) => c.status === "pending" || c.status === "encoding").length;
+  const finishedCount = candidates.filter(
+    (c) => c.status === "done" || c.status === "failed" || c.status === "skipped",
+  ).length;
+  const overallProgress = candidates.length
+    ? candidates.reduce(
+        (sum, c) =>
+          sum +
+          (c.status === "done" || c.status === "failed" || c.status === "skipped"
+            ? 100
+            : c.status === "encoding"
+              ? c.progress ?? 0
+              : 0),
+        0,
+      ) / candidates.length
+    : 0;
+  const pendingCount = candidates.filter(
+    (c) => c.status === "pending" || c.status === "encoding" || c.status === "skipped" || c.status === "failed",
+  ).length;
 
   return (
     <section aria-labelledby="optimize-view" className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -289,9 +522,40 @@ export function OptimizeView() {
           />
           {candidates.length > 0 ? (
             <p className="text-xs text-muted-foreground">
+              {pickedDir ? (
+                <span className="mr-2 block max-w-[520px] truncate font-mono text-[10px] text-muted-foreground/80" title={pickedDir}>
+                  {pickedDir}
+                </span>
+              ) : null}
               {candidates.length} video(s) found · {(totalBytes / 1024 / 1024).toFixed(1)} MB total
             </p>
           ) : null}
+        </div>
+
+        {outputRoot ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-info/30 bg-info/5 px-3 py-2 text-xs text-info">
+            <span className="min-w-0 break-all font-mono text-[11px]">{outputRoot}</span>
+            <button
+              type="button"
+              className="ml-auto rounded-md border border-info/40 bg-info/10 px-2 py-1 text-[11px] hover:bg-info/20"
+              onClick={() => { void import("@tauri-apps/api/core").then((m) => m.invoke("reveal_path", { path: outputRoot })); }}
+            >
+              Reveal in Finder
+            </button>
+          </div>
+        ) : null}
+
+        <div className="max-w-xl">
+          <label htmlFor="optimize-intent" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Intent (optional — AI picks codec/CRF/audio)
+          </label>
+          <input
+            id="optimize-intent"
+            value={optimizeIntent}
+            onChange={(event) => setOptimizeIntent(event.target.value)}
+            placeholder='e.g. "smallest file, strip audio" or "keep quality for retina displays"'
+            className="mt-1 w-full rounded-md border border-border bg-background/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
         </div>
 
         {error ? (
@@ -302,7 +566,28 @@ export function OptimizeView() {
 
         {candidates.length > 0 ? (
           <div className="overflow-hidden rounded-xl border border-border bg-card/50 backdrop-blur">
-            <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-2.5">
+            <div className="border-b border-border/60 px-4 py-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium">Overall progress</span>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {finishedCount}/{candidates.length} files · {Math.round(overallProgress)}%
+                </span>
+              </div>
+              <div
+                className="mt-2 h-2 overflow-hidden rounded-full bg-secondary"
+                role="progressbar"
+                aria-label="Overall optimization progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(overallProgress)}
+              >
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-300"
+                  style={{ width: `${Math.min(100, overallProgress)}%` }}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-2">
               <span className="text-sm font-medium">Optimization queue</span>
               <button
                 type="button"
@@ -318,7 +603,27 @@ export function OptimizeView() {
                 <li key={candidate.filePath} className="flex flex-wrap items-center gap-3 px-4 py-3 text-xs">
                   <span className="flex-1 min-w-0">
                     <p className="truncate font-mono text-[11px]">{candidate.filePath}</p>
-                    <p className="mt-0.5 tabular-nums text-muted-foreground">{(candidate.file.size / 1024 / 1024).toFixed(1)} MB</p>
+                    <p className="mt-0.5 tabular-nums text-muted-foreground">{(candidate.size / 1024 / 1024).toFixed(1)} MB</p>
+                    {candidate.status === "encoding" ? (
+                      <span className="mt-1.5 block">
+                        <span
+                          className="block h-1.5 overflow-hidden rounded-full bg-secondary"
+                          role="progressbar"
+                          aria-label={`Encoding ${candidate.filePath}`}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={Math.round(candidate.progress ?? 0)}
+                        >
+                          <span
+                            className="block h-full rounded-full bg-primary transition-[width] duration-300"
+                            style={{ width: `${Math.min(100, candidate.progress ?? 0)}%` }}
+                          />
+                        </span>
+                        <span className="mt-0.5 block text-[10px] tabular-nums text-muted-foreground">
+                          {Math.round(candidate.progress ?? 0)}%
+                        </span>
+                      </span>
+                    ) : null}
                   </span>
                   <span className={cn("text-[10px] uppercase tracking-wider", statusTone(candidate.status))}>
                     {candidate.status === "encoding" ? (
@@ -328,15 +633,22 @@ export function OptimizeView() {
                       </>
                     ) : candidate.status}
                   </span>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={candidate.status === "encoding" || working}
-                    onClick={() => optimizeOne(index)}
-                  >
-                    <Zap className="size-4" aria-hidden />
-                    Optimize
-                  </Button>
+                  {candidate.status === "encoding" ? (
+                    <Button size="sm" variant="destructive" onClick={cancelCurrent}>
+                      <Square className="size-4" aria-hidden />
+                      Cancel
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={working}
+                      onClick={() => optimizeOne(index)}
+                    >
+                      <Zap className="size-4" aria-hidden />
+                      Optimize
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -347,8 +659,16 @@ export function OptimizeView() {
           <div className="flex flex-wrap gap-2">
             <Button onClick={optimizeAll} disabled={working || pendingCount === 0}>
               {working ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Zap className="size-4" aria-hidden />}
-              {working ? `Processing ${doneCount}/${candidates.length}…` : `Optimize all (${pendingCount} pending)`}
+              {working
+                ? `Processing ${finishedCount}/${candidates.length} · ${Math.round(overallProgress)}%`
+                : `Optimize all (${pendingCount} pending)`}
             </Button>
+            {working ? (
+              <Button variant="destructive" onClick={cancelAll}>
+                <Square className="size-4" aria-hidden />
+                Cancel all
+              </Button>
+            ) : null}
             <Button variant="outline" onClick={downloadZip} disabled={zipping || candidates.every((c) => c.status !== "done")}>
               {zipping ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <ArrowDownToLine className="size-4" aria-hidden />}
               {zipping ? "Zipping…" : `Download zip bundle`}
@@ -367,7 +687,7 @@ export function OptimizeView() {
             <li>· A single <code className="font-mono">pixel-press-optimized-bundle.zip</code></li>
           </ul>
           <p className="mt-3 leading-snug">
-            Everything is encoded in this browser. Nothing is uploaded.
+            Everything is encoded on this device. Nothing is uploaded.
           </p>
         </div>
 
@@ -388,6 +708,24 @@ export function OptimizeView() {
       </aside>
     </section>
   );
+}
+
+function ensurePixelPressedRoot(dir: string | null, current: string | null): string {
+  if (current) return current;
+  const base = dir ?? ".";
+  const sep = base.includes(String.fromCharCode(92)) ? String.fromCharCode(92) : "/";
+  const trimmed = base.replace(/[\\/]+$/, "");
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const ts = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  return `${trimmed}${sep}pixel-pressed-${ts}`;
+}
+
+function joinRelative(root: string, relPath: string, fileName: string): string {
+  const sep = root.includes(String.fromCharCode(92)) ? String.fromCharCode(92) : "/";
+  const rel = relPath.replace(/[\\/]+/g, sep);
+  const dir = rel.includes(sep) ? rel.slice(0, rel.lastIndexOf(sep)) : "";
+  return dir ? `${root}${sep}${dir}${sep}${fileName}` : `${root}${sep}${fileName}`;
 }
 
 function statusTone(status: OptimizeCandidate["status"]): string {

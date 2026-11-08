@@ -115,3 +115,25 @@ export async function removeFile(path: string): Promise<boolean> {
   const mod = await import("@tauri-apps/api/core");
   return mod.invoke<boolean>("remove_file", { path });
 }
+
+/** Calls the native LLM inference, streaming token pieces to `onToken` as they are generated. */
+export async function planWithNativeLlm(
+  metadata: Record<string, unknown>,
+  intent?: string,
+  onToken?: (piece: string) => void,
+) {
+  const mod = await import("@tauri-apps/api/core");
+  const requestId = crypto.randomUUID();
+  let unlisten: (() => void) | null = null;
+  if (onToken) {
+    const { listen } = await import("@tauri-apps/api/event");
+    unlisten = await listen<{ requestId: string; piece: string }>("llm-token", (event) => {
+      if (event.payload.requestId === requestId) onToken(event.payload.piece);
+    });
+  }
+  try {
+    return await mod.invoke("plan_intent", { metadata, intent, requestId });
+  } finally {
+    unlisten?.();
+  }
+}

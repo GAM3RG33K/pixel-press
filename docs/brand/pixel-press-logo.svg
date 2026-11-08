@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    pixel-press — "The Press"
+    Three scan bars compress into a single violet press plate.
+    Design tokens:
+      badge  #0D0D12 (near-black)
+      bars   #FFFFFF (pure white)
+      plate  #8B5CF6 (press violet)
+  -->
+  <rect width="512" height="512" rx="113" ry="113" fill="#0D0D12"/>
+  <rect x="124" y="146" width="264" height="48" rx="10" fill="#FFFFFF"/>
+  <rect x="164" y="214" width="184" height="48" rx="10" fill="#FFFFFF"/>
+  <rect x="204" y="282" width="104" height="48" rx="10" fill="#FFFFFF"/>
+  <rect x="100" y="352" width="312" height="54" rx="12" fill="#8B5CF6"/>
+</svg>

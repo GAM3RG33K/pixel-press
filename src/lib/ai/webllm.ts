@@ -260,7 +260,7 @@ export async function planWithAI(
     return {
       plan: fallbackPlan,
       used: 'rule-engine',
-      error: 'AI model is not downloaded or WebGPU is unavailable — rule engine used',
+      error: 'AI model is not available — rule engine used',
     };
   }
 

@@ -12,6 +12,10 @@ import type { EncoderCapabilities, VideoMetadata } from "@/types/media";
 import { Button } from "@/components/ui/button";
 import { DropZone } from "@/components/DropZone";
 import { getFfmpegService } from "@/lib/ffmpeg/service";
+import { isNativeEngine, nativeCapabilities, nativeStageInput, nativeProbeStaged, nativeEncodeFile, nativeOutPath, nativeReadAndRemove, type NativeStagedInput } from "@/lib/ffmpeg/native-engine";
+import { StageCard, type StageProgressState } from "@/components/stage-card";
+import { useAiMode } from "@/lib/ai/use-ai-mode";
+import { resolvePlan } from "@/lib/ai/plan";
 import { diag, captureError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
 
@@ -34,15 +38,34 @@ export function CompareView() {
   const [status, setStatus] = useState<"idle" | "probing" | "ready" | "encoding" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const [currentLabel, setCurrentLabel] = useState("");
+  const [currentIndex, setCurrentIndex] = useState(-1);
+  const [variantProgress, setVariantProgress] = useState<number[]>([0, 0, 0]);
   const [results, setResults] = useState<CompareResult[]>([]);
+  const [aiPlan, setAiPlan] = useState<{ targetCodec: "h264" | "vp9" | "h265"; crf: number; audioHandling?: "copy" | "encode" | "strip"; ruleSource?: string } | null>(null);
+  const aiMode = useAiMode();
   const [activeIndex, setActiveIndex] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
+  const [stageProgress, setStageProgress] = useState<StageProgressState | null>(null);
+  const stagedRef = useRef<NativeStagedInput | null>(null);
 
   useEffect(() => {
     if (metadata) {
-      getFfmpegService().getCapabilities().then(setCapabilities).catch(() => undefined);
+      if (isNativeEngine()) {
+        nativeCapabilities().then(setCapabilities).catch(() => undefined);
+      } else {
+        getFfmpegService().getCapabilities().then(setCapabilities).catch(() => undefined);
+      }
+      // Let the AI (or rule engine) anchor the three quality settings.
+      resolvePlan(metadata, undefined, aiMode).then((result) => {
+        setAiPlan({
+          targetCodec: result.plan.targetCodec,
+          crf: result.plan.crf,
+          ...(result.plan.audioHandling !== undefined ? { audioHandling: result.plan.audioHandling } : {}),
+          ...(result.plan.ruleSource !== undefined ? { ruleSource: result.plan.ruleSource } : {}),
+        });
+      });
     }
-  }, [metadata]);
+  }, [metadata, aiMode]);
 
   const analyzeFile = useCallback(async (incoming: File) => {
     setFile(incoming);
@@ -51,6 +74,26 @@ export function CompareView() {
     setStatus("probing");
     setError(null);
     try {
+      if (isNativeEngine()) {
+        if (stagedRef.current) {
+          const oldDir = stagedRef.current.dir;
+          void import("@tauri-apps/api/core").then((m) => m.invoke("cleanup_encode_dir", { path: oldDir }));
+          stagedRef.current = null;
+        }
+        const stagingStarted = performance.now();
+        setStageProgress({ copied: 0, total: incoming.size, startedAt: stagingStarted });
+        const staged = await nativeStageInput(
+          incoming,
+          "compare-out.mp4",
+          (copied, total) => setStageProgress({ copied, total, startedAt: stagingStarted }),
+        );
+        stagedRef.current = staged;
+        const result = await nativeProbeStaged(staged, incoming.name, incoming.size);
+        setMetadata(result.metadata);
+        setStageProgress(null);
+        setStatus("ready");
+        return;
+      }
       const service = getFfmpegService();
       const result = await service.probe({ input: incoming, fileName: incoming.name });
       setMetadata(result.metadata);
@@ -62,6 +105,7 @@ export function CompareView() {
         name: normalized.name,
         stack: normalized.stack,
       });
+      setStageProgress(null);
       setError(normalized.message);
       setStatus("error");
     }
@@ -72,37 +116,79 @@ export function CompareView() {
     setStatus("encoding");
     setError(null);
     setResults([]);
+    setVariantProgress([0, 0, 0]);
+    setCurrentIndex(-1);
     abortRef.current?.abort();
     abortRef.current = new AbortController();
 
+    setVariantProgress([0, 0, 0]);
+    setCurrentIndex(-1);
+
     try {
-      const service = getFfmpegService();
+      const useNative = isNativeEngine();
+      const service = useNative ? null : getFfmpegService();
       const base = file.name.replace(/\.[^./]+$/, "") || "sample";
       const out: CompareResult[] = [];
 
-      // Build three variants: H.264 CRF 23, H.264 CRF 28, VP9 CRF 34
+      // Anchor the three variants to the resolved plan (AI when enabled), with sane clamps.
+      const anchor = aiPlan?.crf ?? 27;
+      const stripAudio = aiPlan?.audioHandling === "strip";
       const variants = [
-        { label: "H.264 · CRF 23 · high quality", crf: 23, codec: "h264" as const, container: "mp4" as const },
-        { label: "H.264 · CRF 28 · balanced", crf: 28, codec: "h264" as const, container: "mp4" as const },
-        { label: "VP9 · CRF 30 · smallest", crf: 30, codec: "vp9" as const, container: "webm" as const },
+        { label: `H.264 · CRF ${Math.max(16, anchor - 5)} · high quality`, crf: Math.max(16, anchor - 5), codec: "h264" as const, container: "mp4" as const },
+        { label: `H.264 · CRF ${Math.min(35, anchor)} · balanced`, crf: Math.min(35, anchor), codec: "h264" as const, container: "mp4" as const },
+        { label: `VP9 · CRF ${Math.min(50, anchor + 8)} · smallest`, crf: Math.min(50, anchor + 8), codec: "vp9" as const, container: "webm" as const },
       ];
+      void stripAudio;
 
-      for (const variant of variants) {
+      for (const [variantIndex, variant] of variants.entries()) {
         if (abortRef.current.signal.aborted) return;
         setCurrentLabel(variant.label);
+        setCurrentIndex(variantIndex);
         const outName = `${base}-${variant.codec}-${variant.crf}.${variant.container}`;
         const started = performance.now();
-        const encoded = await service.encode({
-          input: file,
-          inputFileName: file.name,
-          outputFileName: outName,
-          codec: variant.codec,
-          crf: variant.crf,
-          ...(variant.container === "mp4" ? { faststart: true } : {}),
-          durationSeconds: metadata.duration,
-          stripAudio: true,
-          signal: abortRef.current.signal,
-        });
+        const onProgress = (p: number) => {
+          setVariantProgress((prev) => prev.map((v, i) => (i === variantIndex ? p : v)));
+        };
+        let encoded: {
+          data: Uint8Array;
+          outputFileName: string;
+          durationMs: number;
+          sizeBytes: number;
+          log: string[];
+        };
+        if (useNative) {
+          const staged = stagedRef.current ?? (await nativeStageInput(file, outName));
+          if (!stagedRef.current) stagedRef.current = staged;
+          const outPath = nativeOutPath(staged, outName);
+          const done = await nativeEncodeFile({
+            inputPath: staged.tmpPath,
+            outputPath: outPath,
+            codec: variant.codec,
+            crf: variant.crf,
+            ...(variant.container === "mp4" ? { faststart: true } : {}),
+            durationSeconds: metadata.duration,
+            stripAudio: aiPlan?.audioHandling === "strip",
+            signal: abortRef.current.signal,
+            onProgress,
+          });
+          const bytes = await nativeReadAndRemove(outPath);
+          encoded = { data: bytes, outputFileName: outName, durationMs: done.durationMs, sizeBytes: done.sizeBytes, log: done.log };
+        } else {
+          const wasmResult = await service!.encode({
+            input: file,
+            inputFileName: file.name,
+            outputFileName: outName,
+            codec: variant.codec,
+            crf: variant.crf,
+            ...(variant.container === "mp4" ? { faststart: true } : {}),
+            durationSeconds: metadata.duration,
+            stripAudio: aiPlan?.audioHandling === "strip",
+            signal: abortRef.current.signal,
+            onProgress: ({ progress }: { progress: number }) => onProgress(progress),
+          });
+          encoded = { ...wasmResult, sizeBytes: wasmResult.data.byteLength };
+        }
+        setVariantProgress((prev) => prev.map((v, i) => (i === variantIndex ? 100 : v)));
 
         const blob = new Blob([encoded.data as Uint8Array<ArrayBuffer>], {
           type: variant.container === "webm" ? "video/webm" : "video/mp4",
@@ -178,19 +264,83 @@ export function CompareView() {
                 {metadata ? ` · ${metadata.width}×${metadata.height} · ${metadata.duration.toFixed(1)}s` : ""}
               </p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => { setFile(null); setMetadata(null); setResults([]); setStatus("idle"); }}>
+            <Button variant="ghost" size="sm" onClick={() => {
+              if (stagedRef.current) {
+                const dir = stagedRef.current.dir;
+                void import("@tauri-apps/api/core").then((m) => m.invoke("cleanup_encode_dir", { path: dir }));
+                stagedRef.current = null;
+              }
+              setFile(null); setMetadata(null); setResults([]); setStatus("idle");
+            }}>
               <Trash2 className="size-4" aria-hidden />
               Clear
             </Button>
           </div>
         )}
 
+        {status === "probing" && file ? (
+          <StageCard file={file} stageProgress={stageProgress} />
+        ) : null}
+
         {status === "encoding" ? (
-          <div className="rounded-xl border border-border bg-card/50 p-4 backdrop-blur">
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-              Encoding {currentLabel}…
-            </p>
+          <div className="rounded-xl border border-border bg-card/50 p-4 backdrop-blur" role="status">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+                Encoding {currentLabel}…
+              </p>
+              <p className="text-xs tabular-nums text-muted-foreground">
+                Variant {Math.max(1, currentIndex + 1)}/3 ·{" "}
+                {Math.round(variantProgress.reduce((sum, v) => sum + v, 0) / variantProgress.length)}% overall
+              </p>
+            </div>
+            <div
+              className="mt-3 h-2 overflow-hidden rounded-full bg-secondary"
+              role="progressbar"
+              aria-label="Overall encoding progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(variantProgress.reduce((sum, v) => sum + v, 0) / variantProgress.length)}
+            >
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-300"
+                style={{ width: `${variantProgress.reduce((sum, v) => sum + v, 0) / variantProgress.length}%` }}
+              />
+            </div>
+            <ul className="mt-3 space-y-1.5">
+              {(() => {
+                const anchor = aiPlan?.crf ?? 27;
+                return [
+                  { label: `H.264 · CRF ${Math.max(16, anchor - 5)} · high quality` },
+                  { label: `H.264 · CRF ${Math.min(35, anchor)} · balanced` },
+                  { label: `VP9 · CRF ${Math.min(50, anchor + 8)} · smallest` },
+                ];
+              })().map((variant, index) => {
+                const progressValue = variantProgress[index] ?? 0;
+                const isActive = index === currentIndex;
+                return (
+                  <li key={variant.label} className="text-[11px] text-muted-foreground">
+                    <span className="mb-0.5 flex items-center justify-between gap-2">
+                      <span className={cn(isActive && "text-foreground")}>{variant.label}</span>
+                      <span className="tabular-nums">{Math.round(progressValue)}%</span>
+                    </span>
+                    <span
+                      className="block h-1.5 overflow-hidden rounded-full bg-secondary"
+                      role="progressbar"
+                      aria-label={`Encoding ${variant.label}`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(progressValue)}
+                    >
+                      <span
+                        className={cn("block h-full rounded-full transition-[width] duration-300", isActive ? "bg-primary" : "bg-primary/60")}
+                        style={{ width: `${Math.min(100, progressValue)}%` }}
+                      />
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         ) : null}
 
@@ -295,13 +445,21 @@ export function CompareView() {
 
         {capabilities && file ? (
           <Button onClick={runCompare} disabled={status === "encoding"} className="mt-auto">
-            {status === "encoding" ? (
+            {status === "probing" && file ? (
+          <StageCard file={file} stageProgress={stageProgress} />
+        ) : null}
+
+        {status === "encoding" ? (
               <Loader2 className="size-4 animate-spin" aria-hidden />
             ) : (
               <FileVideo className="size-4" aria-hidden />
             )}
             {status === "encoding" ? "Encoding variants…" : "Encode 3 variants"}
           </Button>
+        ) : null}
+
+        {status === "probing" && file ? (
+          <StageCard file={file} stageProgress={stageProgress} />
         ) : null}
 
         {status === "encoding" ? (
