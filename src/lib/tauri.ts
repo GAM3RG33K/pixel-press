@@ -50,4 +50,19 @@ export const tauriApi = {
   /** Returns the app's per-user data directory (manifests, binaries, models). */
   getAppConfigDir: (): Promise<string> =>
     invoke<string>("get_app_config_dir"),
+
+  /** Checks if ffmpeg/ffprobe are on PATH or in the app config bin dir. */
+  checkForFFmpeg: (): Promise<FfmpegStatus> =>
+    invoke<FfmpegStatus>("check_for_ffmpeg"),
+
+  /** Returns basic host information (os, arch, tauri version). */
+  platformInfo: (): Promise<{ os: string; arch: string; tauri: string }> =>
+    invoke<{ os: string; arch: string; tauri: string }>("platform_info"),
 };
+
+export interface FfmpegStatus {
+  ffmpeg_present: boolean;
+  ffprobe_present: boolean;
+  ffmpeg_version: string | null;
+  ffprobe_version: string | null;
+}

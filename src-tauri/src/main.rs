@@ -10,12 +10,14 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             ffprobe_json,
+            ffprobe_bytes,
+            generate_test_clip,
             fs_read_dir,
             read_file_text,
             pick_folder,
             get_app_config_dir,
-            ffprobe_bytes,
-            generate_test_clip,
+            check_for_ffmpeg,
+            platform_info,
         ])
         .setup(|app| {
             let path = app
@@ -37,6 +39,59 @@ pub struct FsEntry {
     pub last_modified: u64,
 }
 
+#[derive(serde::Serialize, Debug)]
+pub struct FfmpegStatus {
+    pub ffmpeg_present: bool,
+    pub ffprobe_present: bool,
+    pub ffmpeg_version: Option<String>,
+    pub ffprobe_version: Option<String>,
+}
+
+#[tauri::command]
+fn check_for_ffmpeg() -> FfmpegStatus {
+    FfmpegStatus {
+        ffmpeg_present: tool_present("ffmpeg").is_some(),
+        ffprobe_present: tool_present("ffprobe").is_some(),
+        ffmpeg_version: tool_version("ffmpeg"),
+        ffprobe_version: tool_version("ffprobe"),
+    }
+}
+
+#[tauri::command]
+fn platform_info() -> serde_json::Value {
+    let arch = std::env::consts::ARCH;
+    let os = std::env::consts::OS;
+    serde_json::json!({
+        "os": os,
+        "arch": arch,
+        "tauri": env!("CARGO_PKG_VERSION"),
+    })
+}
+
+/// Returns `Some(version_str)` if the tool is on PATH; `None` otherwise.
+fn tool_present(cmd: &str) -> Option<bool> {
+    if std::process::Command::new(cmd)
+        .arg("-version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        Some(true)
+    } else {
+        None
+    }
+}
+
+/// Returns the full `ffmpeg -version` first line, or `None` if the tool is unavailable.
+fn tool_version(cmd: &str) -> Option<String> {
+    let output = std::process::Command::new(cmd).arg("-version").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout.lines().next().map(|l| l.trim().to_string())
+}
+
 #[tauri::command]
 fn ffprobe_json(input_path: String) -> Result<String, String> {
     let output = std::process::Command::new("ffprobe")
@@ -49,7 +104,7 @@ fn ffprobe_json(input_path: String) -> Result<String, String> {
             &input_path,
         ])
         .output()
-        .map_err(|e| format!("ffprobe spawn failed (is ffmpeg installed?): {e}"))?;
+        .map_err(|e| format!("ffprobe spawn failed (is ffmpeg/ffprobe installed?): {e}"))?;
     check(&output)?;
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }

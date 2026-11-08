@@ -16,6 +16,8 @@ import { OptimizeView } from "@/features/optimize/OptimizeView";
 import { EngineCheckCard } from "@/features/status/EngineCheckCard";
 import { AiSettingsCard } from "@/features/settings/AiSettingsCard";
 import { DiagnosticsFab } from "@/features/diagnostics/DiagnosticsFab";
+import { SetupScreen } from "@/features/setup/SetupScreen";
+import { isTauri, tauriApi } from "@/lib/tauri";
 import { diag } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +32,7 @@ const TABS: { id: TabId; label: string; icon: typeof Zap; description: string }[
 
 export default function App() {
   const [tab, setTab] = useState<TabId>("compress");
+  const [setupState, setSetupState] = useState<"checking" | "ready" | "missing">("checking");
 
   useEffect(() => {
     // Avoid the React StrictMode dev double-mount logging twice
@@ -58,6 +61,32 @@ export default function App() {
       });
     });
   }, []);
+
+  // Tauri-only: probe for ffmpeg/ffprobe at startup; block on missing tools.
+  useEffect(() => {
+    if (!isTauri()) {
+      setSetupState("ready");
+      return;
+    }
+    tauriApi.checkForFFmpeg().then((s) => {
+      setSetupState(s.ffmpeg_present && s.ffprobe_present ? "ready" : "missing");
+    }).catch((error) => {
+      diag.error('app', 'ffmpeg probe failed', { error: error instanceof Error ? error.message : String(error) });
+      setSetupState("ready"); // don't block user permanently if probe crashes
+    });
+  }, []);
+
+  if (isTauri() && setupState === "missing") {
+    return <SetupScreen onReady={() => setSetupState("ready")} />;
+  }
+
+  if (isTauri() && setupState === "checking") {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-background text-sm text-muted-foreground">
+        Checking for ffmpeg/ffprobe…
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-dvh">
