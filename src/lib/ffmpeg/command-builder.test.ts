@@ -54,8 +54,8 @@ describe("audioArgs", () => {
     expect(audioArgs("mov", false)).toEqual(["-c:a", "aac", "-b:a", "128k"]);
   });
 
-  it("webm uses libopus at 96k", () => {
-    expect(audioArgs("webm", false)).toEqual(["-c:a", "libopus", "-b:a", "96k"]);
+  it("webm uses libopus at 96k, stereo-downmixed for 5.1(side) sources", () => {
+    expect(audioArgs("webm", false)).toEqual(["-c:a", "libopus", "-b:a", "96k", "-ac", "2"]);
   });
 });
 

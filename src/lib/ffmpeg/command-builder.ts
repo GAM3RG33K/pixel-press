@@ -68,7 +68,9 @@ export function audioArgs(
   if (stripAudio) return ["-an"];
   switch (container) {
     case "webm":
-      return ["-c:a", "libopus", "-b:a", "96k"];
+      // 5.1(side) / 7.1 inputs can't feed libopus's default mapping family;
+      // always downmix to stereo — universally playable for web autoplay.
+      return ["-c:a", "libopus", "-b:a", "96k", "-ac", "2"];
     case "mp4":
     case "mov":
       return ["-c:a", "aac", "-b:a", "128k"];
