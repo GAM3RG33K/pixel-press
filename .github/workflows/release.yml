@@ -1,0 +1,153 @@
+name: Release
+
+# Tag pushes (v*.*.*) produce a GitHub Release with all bundles.
+# workflow_dispatch builds the same matrix and uploads artifacts without
+# creating a release — use it to validate the pipeline safely.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Universal
+            os: macos-14
+            target: universal-apple-darwin
+            rust_targets: x86_64-apple-darwin,aarch64-apple-darwin
+            bundles: dmg
+            artifact_glob: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          - name: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: msi
+            artifact_glob: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+          - name: Windows ARM64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            bundles: msi
+            artifact_glob: src-tauri/target/aarch64-pc-windows-msvc/release/bundle/msi/*.msi
+          - name: Linux x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb
+            artifact_glob: |-
+              src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+              src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+          - name: Linux ARM64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            bundles: appimage,deb
+            artifact_glob: |-
+              src-tauri/target/aarch64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+              src-tauri/target/aarch64-unknown-linux-gnu/release/bundle/deb/*.deb
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets || matrix.target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux system dependencies
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake pkg-config libclang-dev clang \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf libssl-dev libxdo-dev
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build the app
+        run: bunx tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+        env:
+          CI: true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.artifact_glob }}
+          retention-days: 14
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Flatten artifacts, compute checksums, stage manifest
+        run: |
+          mkdir -p dist
+          find release-assets -type f \
+            \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' \) \
+            -exec mv {} dist/ \;
+          cd dist
+          cp ../src-tauri/resources/setup-manifest.json ./setup-manifest.json
+          sha256sum *.dmg *.msi *.deb *.AppImage > SHA256SUMS.txt
+          ls -la
+          cat SHA256SUMS.txt
+
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: pixel-press ${{ github.ref_name }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          body: |
+            **pixel-press** — local-first video compression for the web. Nothing uploads; everything runs on your machine.
+
+            First launch downloads FFmpeg/FFprobe and (optionally) a ~270 MB on-device LLM — SHA-256-verified, installed into your app data directory. The app then works fully offline. No accounts, no telemetry.
+
+            > Unsigned build (macOS Gatekeeper / Windows SmartScreen will warn). macOS: right-click → Open. Windows: More info → Run anyway. Platform signing is planned — see the roadmap.
+
+            ## Install
+
+            | Platform | Asset | Requirements |
+            | --- | --- | --- |
+            | macOS Universal (Intel + Apple Silicon) | `pixel-press_${{ github.ref_name }}_*_universal.dmg` | macOS 10.15+ |
+            | Windows x64 | `*_x64_en-US.msi` | Windows 10 1809+, WebView2 (built in on Win 11) |
+            | Windows ARM64 | `*_arm64_en-US.msi` | Windows 11 on ARM |
+            | Linux x64 | `*_amd64.AppImage` or `*_amd64.deb` | glibc ≥ 2.31, WebKitGTK 4.1 |
+            | Linux ARM64 | `*_arm64.AppImage` or `*_arm64.deb` | Raspberry Pi OS / Ubuntu ARM64 |
+
+            ## Verify
+
+            ```sh
+            sha256sum -c SHA256SUMS.txt
+            ```
+
+            `setup-manifest.json` lists SHA-256 + size + source for the FFmpeg/FFprobe/LLM artifacts downloaded on first launch.
+
+            ## Licenses
+
+            pixel-press is MIT-licensed. FFmpeg/FFprobe are separate GPL/LGPL binaries downloaded by you at first launch; the LLM weights (SmolLM2-360M, Apache-2.0) likewise. See `THIRD_PARTY_NOTICES.md`.
+          files: dist/*

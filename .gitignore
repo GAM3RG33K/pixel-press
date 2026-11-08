@@ -4,6 +4,9 @@
 
 # Open-source project files
 !/.gitignore
+!/.github/
+!/.github/workflows/
+!/.github/workflows/**
 !/LICENSE
 !/README.md
 !/CONTRIBUTING.md
