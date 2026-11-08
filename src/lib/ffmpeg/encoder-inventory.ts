@@ -15,7 +15,7 @@ export function parseEncoderListing(
     );
 
   return {
-    libvpxVp9: has("libvpx-vp9"),
+    libvpx: has("libvpx"),
     libx264: has("libx264"),
     libx265: has("libx265"),
     multiThreaded,
@@ -27,13 +27,13 @@ export function parseEncoderListing(
  * H.265 is preferred; H.264 is the guaranteed fallback.
  */
 export function resolveFallbackCodec(
-  requested: "h265" | "h264" | "vp9" | "av1",
+  requested: "h265" | "h264" | "vp8" | "av1",
   capabilities: EncoderCapabilities,
-): { codec: "h265" | "h264" | "vp9" | "av1"; fellBack: boolean } {
+): { codec: "h265" | "h264" | "vp8" | "av1"; fellBack: boolean } {
   const available = {
     h265: capabilities.libx265,
     h264: capabilities.libx264,
-    vp9: capabilities.libvpxVp9,
+    vp8: capabilities.libvpx,
     av1: true,
   } as const;
 

@@ -29,11 +29,11 @@ describe("codecArgs", () => {
     expect(args).toContain("yuv420p");
   });
 
-  it("vp9 sets CRF mode with b:v 0 and cpu-used", () => {
-    const args = codecArgs("vp9", 30);
-    expect(args).toContain("libvpx-vp9");
+  it("vp8 sets CRF mode with b:v 0 and cpu-used", () => {
+    const args = codecArgs("vp8", 30);
+    expect(args).toContain("libvpx");
     expect(args).toContain("-b:v");
-    expect(args).toContain("0");
+    expect(args).toContain("1M");
     expect(args).toContain("-cpu-used");
   });
 
@@ -122,7 +122,7 @@ describe("buildEncodeArgs", () => {
     const webm = buildEncodeArgs({
       ...base,
       outputPath: "/out.webm",
-      codec: "vp9",
+      codec: "vp8",
       faststart: true,
     });
     expect(webm).not.toContain("-movflags");
@@ -131,7 +131,7 @@ describe("buildEncodeArgs", () => {
   it("infers the audio codec from the output extension", () => {
     expect(buildEncodeArgs(base)).toContain("aac");
     expect(
-      buildEncodeArgs({ ...base, outputPath: "/out.webm", codec: "vp9" }),
+      buildEncodeArgs({ ...base, outputPath: "/out.webm", codec: "vp8" }),
     ).toContain("libopus");
   });
 

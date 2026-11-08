@@ -20,7 +20,7 @@ export interface FallbackNotice {
 export const CODEC_LABELS: Record<TargetCodec, string> = {
   h265: "H.265 (HEVC)",
   h264: "H.264 (AVC)",
-  vp9: "VP9",
+  vp8: "VP8",
   av1: "AV1",
 };
 

@@ -24,9 +24,9 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "efficient-webm",
-    label: "High-Efficiency VP9/WebM",
-    description: "Smallest file size with VP9/WebM",
-    intent: "make the file as small as possible, vp9 webm",
+    label: "High-Efficiency VP8/WebM",
+    description: "Smallest file size with VP8/WebM",
+    intent: "make the file as small as possible, vp8 webm",
   },
   {
     id: "social-1080",
@@ -58,7 +58,7 @@ export interface PlannedVariant {
 
 /**
  * Maps a deterministic CompressionPlan to the concrete outputs the app
- * produces: a WebM (VP9) and/or MP4 (H.264/H.265) variant.
+ * produces: a WebM (VP8) and/or MP4 (H.264/H.265) variant.
  */
 export function buildVariantPlan(
   intentOrPreset: string | undefined,
@@ -85,14 +85,14 @@ export function estimateSizeBytes(
   codec: TargetCodec,
 ): number {
   // Higher CRF = more compression = smaller file.
-  const base = codec === "vp9" ? 0.42 : 0.5;
+  const base = codec === "vp8" ? 0.42 : 0.5;
   const factor = Math.pow(base, (crf - 18) / 6);
   return Math.round(sourceBytes * Math.min(1, Math.max(0.04, factor)));
 }
 
 function ffmpegFlags(codec: TargetCodec, crf: number): string[] {
-  if (codec === "vp9") {
-    return ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", String(crf), "-deadline", "good", "-cpu-used", "2"];
+  if (codec === "vp8") {
+    return ["-c:v", "libvpx", "-crf", String(crf), "-b:v", "1M", "-deadline", "good", "-cpu-used", "4"];
   }
   return [
     "-c:v",
@@ -112,7 +112,7 @@ export interface VariantSet {
 
 /**
  * Builds the user-facing variant set (MP4 fallback + WebM) from the rule engine
- * output. Always emits an MP4 (H.264) variant plus a WebM (VP9) variant
+ * output. Always emits an MP4 (H.264) variant plus a WebM (VP8) variant
  * unless the rule engine produced a different plan.
  */
 export function buildWorkbenchVariants(
@@ -128,7 +128,7 @@ export function buildWorkbenchVariants(
     {
       label: "Universal MP4 (H.264)",
       container: "mp4",
-      codec: plan.targetCodec === "vp9" ? "h264" : plan.targetCodec === "h264" ? "h264" : "h264",
+      codec: plan.targetCodec === "vp8" ? "h264" : plan.targetCodec === "h264" ? "h264" : "h264",
       requestedCodec: plan.targetCodec,
       crf: Math.min(30, Math.max(18, plan.crf + 4)), // H.264 CRF band is higher
       targetScale: scale,
@@ -138,16 +138,16 @@ export function buildWorkbenchVariants(
       ffmpegFlags: ffmpegFlags("h264", Math.min(30, Math.max(18, plan.crf + 4))),
     },
     {
-      label: "High-Efficiency WebM (VP9)",
+      label: "High-Efficiency WebM (VP8)",
       container: "webm",
-      codec: "vp9",
+      codec: "vp8",
       requestedCodec: plan.targetCodec,
       crf: Math.min(46, Math.max(30, plan.crf + 10)),
       targetScale: scale,
       stripAudio,
       twoPass: false,
-      estimatedSizeBytes: estimateSizeBytes(sourceBytes, Math.min(46, Math.max(30, plan.crf + 10)), "vp9"),
-      ffmpegFlags: ffmpegFlags("vp9", Math.min(46, Math.max(30, plan.crf + 10))),
+      estimatedSizeBytes: estimateSizeBytes(sourceBytes, Math.min(46, Math.max(30, plan.crf + 10)), "vp8"),
+      ffmpegFlags: ffmpegFlags("vp8", Math.min(46, Math.max(30, plan.crf + 10))),
     },
   ];
 

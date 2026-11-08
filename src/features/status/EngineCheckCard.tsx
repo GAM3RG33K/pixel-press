@@ -84,8 +84,8 @@ export function EngineCheckCard() {
           <Badge tone={state.capabilities.libx265 ? "ok" : "warn"}>
             H.265 {state.capabilities.libx265 ? "available" : "missing"}
           </Badge>
-          <Badge tone={state.capabilities.libvpxVp9 ? "ok" : "warn"}>
-            VP9 {state.capabilities.libvpxVp9 ? "available" : "missing"}
+          <Badge tone={state.capabilities.libvpx ? "ok" : "warn"}>
+            VP8 {state.capabilities.libvpx ? "available" : "missing"}
           </Badge>
         </div>
       ) : null}

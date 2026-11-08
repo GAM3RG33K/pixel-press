@@ -9,7 +9,7 @@ import {
 import type { EncoderCapabilities, EncodeVariant, TargetCodec } from "@/types/media";
 
 const caps = (overrides: Partial<EncoderCapabilities> = {}): EncoderCapabilities => ({
-  libvpxVp9: true,
+  libvpx: true,
   libx264: true,
   libx265: true,
   multiThreaded: true,
@@ -50,11 +50,11 @@ describe("codecFallbackNotice", () => {
     expect(notice.message).toContain("H.264 (AVC)");
   });
 
-  it("returns actualCodec h264 when vp9 is requested but libvpxVp9 is unavailable and libx264 is available", () => {
-    const result = codecFallbackNotice("vp9", caps({ libvpxVp9: false, libx264: true }));
+  it("returns actualCodec h264 when vp8 is requested but libvpx is unavailable and libx264 is available", () => {
+    const result = codecFallbackNotice("vp8", caps({ libvpx: false, libx264: true }));
     expect(result).not.toBeNull();
     const notice: FallbackNotice = result as FallbackNotice;
-    expect(notice.requestedCodec).toBe("vp9");
+    expect(notice.requestedCodec).toBe("vp8");
     expect(notice.actualCodec).toBe("h264");
   });
 
@@ -96,18 +96,18 @@ describe("applyEncoderFallback", () => {
 });
 
 describe("applyPlanFallbacks", () => {
-  it("applies fallback to both variants when h265 is requested but x264 is available and vp9 is available (no fallback for vp9)", () => {
+  it("applies fallback to both variants when h265 is requested but x264 is available and vp8 is available (no fallback for vp8)", () => {
     const plan = {
       variants: [
         variant({ requestedCodec: "h265", actualCodec: "h265" }),
-        variant({ requestedCodec: "vp9", actualCodec: "vp9" }),
+        variant({ requestedCodec: "vp8", actualCodec: "vp8" }),
       ],
       workflow: "compress",
       reasoning: "test reasoning",
     };
     const result = applyPlanFallbacks(plan, caps({ libx265: false, libx264: true }));
     expect((result.plan.variants[0] as EncodeVariant).actualCodec).toBe("h264");
-    expect((result.plan.variants[1] as EncodeVariant).actualCodec).toBe("vp9");
+    expect((result.plan.variants[1] as EncodeVariant).actualCodec).toBe("vp8");
     expect(result.notices).toHaveLength(1);
     expect((result.notices[0] as FallbackNotice).requestedCodec).toBe("h265");
     expect((result.notices[0] as FallbackNotice).actualCodec).toBe("h264");
@@ -142,10 +142,10 @@ describe("uniqueFallbackNotices", () => {
           "This plan requested H.265 (HEVC), which this browser's encoder does not provide. It will be compressed with H.264 (AVC) instead.",
       },
       {
-        requestedCodec: "vp9" as TargetCodec,
+        requestedCodec: "vp8" as TargetCodec,
         actualCodec: "h264" as TargetCodec,
         message:
-          "This plan requested VP9, which this browser's encoder does not provide. It will be compressed with H.264 (AVC) instead.",
+          "This plan requested VP8, which this browser's encoder does not provide. It will be compressed with H.264 (AVC) instead.",
       },
     ];
     const unique = uniqueFallbackNotices(notices);
@@ -153,6 +153,6 @@ describe("uniqueFallbackNotices", () => {
     const u = unique as FallbackNotice[];
     expect(u).toHaveLength(2);
     expect((u[0] as FallbackNotice).requestedCodec).toBe("h265");
-    expect((u[1] as FallbackNotice).requestedCodec).toBe("vp9");
+    expect((u[1] as FallbackNotice).requestedCodec).toBe("vp8");
   });
 });

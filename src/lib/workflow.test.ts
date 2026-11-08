@@ -45,7 +45,7 @@ describe('workflow planner', () => {
     expect(set.variants.length).toBe(2);
     expect(set.variants[0]?.container).toBe('mp4');
     expect(set.variants[1]?.container).toBe('webm');
-    expect(set.variants[1]?.codec).toBe('vp9');
+    expect(set.variants[1]?.codec).toBe('vp8');
   });
 
   it('estimateSizeBytes is lower for higher CRF (less quality)', () => {
@@ -54,10 +54,10 @@ describe('workflow planner', () => {
     expect(b).toBeLessThan(a);
   });
 
-  it('estimateSizeBytes is smaller for VP9 than H.264 at comparable CRF', () => {
+  it('estimateSizeBytes is smaller for VP8 than H.264 at comparable CRF', () => {
     const h264 = estimateSizeBytes(100 * 1024 * 1024, 26, 'h264');
-    const vp9 = estimateSizeBytes(100 * 1024 * 1024, 26, 'vp9');
-    expect(vp9).toBeLessThan(h264);
+    const vp8 = estimateSizeBytes(100 * 1024 * 1024, 26, 'vp8');
+    expect(vp8).toBeLessThan(h264);
   });
 
   it('isAudioKept returns true for copy/encode/undefined, false for strip', () => {

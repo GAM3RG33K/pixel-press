@@ -41,7 +41,7 @@ function getWebllmId(modelId: RegisteredModelId): string {
 const PLAN_SCHEMA_DESCRIPTION = `{
   "type": "object",
   "properties": {
-    "targetCodec": { "enum": ["h264", "vp9", "h265"] },
+    "targetCodec": { "enum": ["h264", "vp8", "h265"] },
     "crf": { "type": "number", "minimum": 0, "maximum": 51 },
     "twoPass": { "type": "boolean" },
     "targetScale": { "type": "object", "properties": { "width": { "type": "number" }, "height": { "type": "number" } } },
@@ -73,7 +73,7 @@ function buildPrompt(metadata: VideoMetadata, intent?: string): string {
     })}`,
     `User intent: ${intent && intent.trim() ? intent.trim() : '(none — pick sensible defaults)'}`,
     'Rules:',
-    '- Prefer H.264 for compatibility; VP9 for smallest files; H.265 only when the user asked and the engine supports it.',
+    '- Prefer H.264 for compatibility; VP8 for smallest files; H.265 only when the user asked and the engine supports it.',
     '- Use CRF >= 30 for aggressive compression, <= 23 for high quality.',
     '- Strip audio only for muted/decorative use cases (intent mentions no audio/muted/silent/background).',
     '- Return JSON only, no prose.',
@@ -85,7 +85,7 @@ function validatePlan(obj: unknown): CompressionPlan | null {
   const plan = obj as Record<string, unknown>;
   if (
     typeof plan.targetCodec !== 'string' ||
-    !['h264', 'vp9', 'h265'].includes(plan.targetCodec as string) ||
+    !['h264', 'vp8', 'h265'].includes(plan.targetCodec as string) ||
     typeof plan.crf !== 'number' ||
     plan.crf < 0 ||
     plan.crf > 51 ||
@@ -103,7 +103,7 @@ function validatePlan(obj: unknown): CompressionPlan | null {
       : undefined;
 
   const result: CompressionPlan = {
-    targetCodec: plan.targetCodec as 'h264' | 'vp9' | 'h265',
+    targetCodec: plan.targetCodec as 'h264' | 'vp8' | 'h265',
     crf: plan.crf as number,
     twoPass: typeof plan.twoPass === 'boolean' ? plan.twoPass : false,
     audioHandling:

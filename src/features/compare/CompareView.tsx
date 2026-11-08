@@ -80,11 +80,11 @@ export function CompareView() {
       const base = file.name.replace(/\.[^./]+$/, "") || "sample";
       const out: CompareResult[] = [];
 
-      // Build three variants: H.264 CRF 23, H.264 CRF 28, VP9 CRF 34
+      // Build three variants: H.264 CRF 23, H.264 CRF 28, VP8 CRF 34
       const variants = [
         { label: "H.264 · CRF 23 · high quality", crf: 23, codec: "h264" as const, container: "mp4" as const },
         { label: "H.264 · CRF 28 · balanced", crf: 28, codec: "h264" as const, container: "mp4" as const },
-        { label: "VP9 · CRF 30 · smallest", crf: 30, codec: "vp9" as const, container: "webm" as const },
+        { label: "VP8 · CRF 30 · smallest", crf: 30, codec: "vp8" as const, container: "webm" as const },
       ];
 
       for (const variant of variants) {
@@ -322,7 +322,7 @@ export function CompareView() {
               Recommendation
             </p>
             <p className="mt-2 text-xs text-muted-foreground">
-              {best.label} is the smallest viable variant at ~{Math.round((1 - best.bytes / (metadata?.fileSize ?? 1)) * 100)}% savings. H.264 23 often wins on compatibility; VP9 30 on pure size.
+              {best.label} is the smallest viable variant at ~{Math.round((1 - best.bytes / (metadata?.fileSize ?? 1)) * 100)}% savings. H.264 23 often wins on compatibility; VP8 30 on pure size.
             </p>
           </div>
         ) : null}
