@@ -6,7 +6,8 @@
 
 - License: **GPL-2.0-or-later** for libx264 and libx265 paths; **LGPL-2.1-or-later** for the FFmpeg base library
 - Source: <https://git.ffmpeg.org/gitweb/ffmpeg.git>
-- Distributor: Gyan.dev builds for Windows, jellyfin-ffmpeg, Homebrew for macOS/Linux
+- Distributor: [Martin Riedl's FFmpeg build server](https://ffmpeg.martin-riedl.de/) — static, universal macOS builds (both Intel + Apple Silicon) and Linux amd64/arm64; Windows x64 provided by [Gyan.dev](https://www.gyan.dev/ffmpeg/builds/). Corresponding source release packages are published alongside each build.
+- SHA-256 checksums ship in the app's setup manifest; verification is enforced at install time.
 - Included encoders relevant to this app:
   - `libx264` (H.264 — universal baseline)
   - `libx265` (H.265 — primary MP4 when source offer is provided)
