@@ -473,7 +473,7 @@ export function CompressView() {
             <ul className="mt-2 space-y-1">
               <li>H.264: {capabilities.libx264 ? "available" : "unavailable"}</li>
               <li>H.265: {capabilities.libx265 ? "available" : "unavailable"}</li>
-              <li>VP8: {capabilities.libvpx ? "available" : "unavailable"}</li>
+              <li>VP9: {capabilities.libvpxVp9 ? "available" : "unavailable"}</li>
               <li>Threading: {capabilities.multiThreaded ? "multi-threaded" : "single-threaded"}</li>
             </ul>
             <Button className="mt-3 w-full" variant="outline" size="sm" onClick={encodeNow} disabled={status === "encoding" || !file || !metadata}>

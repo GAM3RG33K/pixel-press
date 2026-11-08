@@ -43,18 +43,18 @@ export function codecArgs(
         "-pix_fmt",
         "yuv420p",
       ];
-    case "vp8":
+    case "vp9":
       return [
         "-c:v",
-        "libvpx",
+        "libvpx-vp9",
         "-crf",
         String(crf),
         "-b:v",
-        "1M",
+        "0",
         "-deadline",
         "good",
         "-cpu-used",
-        "4",
+        "2",
       ];
     case "av1":
       return ["-c:v", "libsvtav1", "-crf", String(crf), "-preset", "8"];

@@ -6,7 +6,7 @@
 
 export type ContainerFormat = "mp4" | "webm" | "mov";
 
-export type TargetCodec = "h265" | "h264" | "vp8" | "av1";
+export type TargetCodec = "h265" | "h264" | "vp9" | "av1";
 
 export interface VideoMetadata {
   id: string;
@@ -43,7 +43,7 @@ export interface ProgressSample {
 }
 
 export interface EncoderCapabilities {
-  libvpx: boolean;
+  libvpxVp9: boolean;
   libx264: boolean;
   libx265: boolean;
   multiThreaded: boolean;

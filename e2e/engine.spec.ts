@@ -40,7 +40,7 @@ test.describe("PWA shell", () => {
     await expect(summary).toContainText(/Multi-threaded|Single-threaded/);
     await expect(summary).toContainText(/H\.264 (available|missing)/);
     await expect(summary).toContainText(/H\.265 (available|missing)/);
-    await expect(summary).toContainText(/VP8 (available|missing)/);
+    await expect(summary).toContainText(/VP9 (available|missing)/);
 
     // Emit the capability text so the test log records the Q-03 answer.
     console.log("ENGINE SUMMARY:", (await summary.innerText()).replace(/\n/g, " | "));
@@ -51,7 +51,7 @@ test.describe("PWA shell", () => {
       await service.getCapabilities();
       const lines = service.lastCapabilityLog as string[];
       return lines.filter((line) =>
-        /libx264|libx265|libvpx/.test(line),
+        /libx264|libx265|libvpx-vp9/.test(line),
       );
     });
     console.log("ENCODER LINES:", encoderLines.join(" || "));

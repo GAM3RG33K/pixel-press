@@ -11,10 +11,10 @@ import type { VideoMetadata } from '../types/media';
 
 export interface CompressionPlan {
   /**
-   * Target codec for compression (h264, vp8, h265)
+   * Target codec for compression (h264, vp9, h265)
    * If not h264 and fallback is required, fallback to h264 with notice
    */
-  targetCodec: 'h264' | 'vp8' | 'h265';
+  targetCodec: 'h264' | 'vp9' | 'h265';
 
   /**
    * CRF value (Constant Rate Factor) for the target codec

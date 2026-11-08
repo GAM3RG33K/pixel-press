@@ -22,7 +22,7 @@ const COMPRESSION_PLAN_SCHEMA = {
   type: 'object',
   required: ['targetCodec', 'crf', 'ruleSource'],
   properties: {
-    targetCodec: { type: 'string', enum: ['h264', 'vp8', 'h265'] },
+    targetCodec: { type: 'string', enum: ['h264', 'vp9', 'h265'] },
     crf: { type: 'number', minimum: 0, maximum: 51 },
     twoPass: { type: 'boolean' },
     targetScale: {
@@ -46,7 +46,7 @@ function validatePlan(obj: unknown): CompressionPlan | null {
   const plan = obj as Record<string, unknown>;
   if (
     typeof plan.targetCodec !== 'string' ||
-    !['h264', 'vp8', 'h265'].includes(plan.targetCodec as string) ||
+    !['h264', 'vp9', 'h265'].includes(plan.targetCodec as string) ||
     typeof plan.crf !== 'number' ||
     plan.crf < 0 ||
     plan.crf > 51 ||
@@ -66,7 +66,7 @@ function validatePlan(obj: unknown): CompressionPlan | null {
   }
 
   const planOut: CompressionPlan = {
-    targetCodec: plan.targetCodec as 'h264' | 'vp8' | 'h265',
+    targetCodec: plan.targetCodec as 'h264' | 'vp9' | 'h265',
     crf: plan.crf as number,
     twoPass: typeof plan.twoPass === 'boolean' ? plan.twoPass : false,
     preserveKeyframes:

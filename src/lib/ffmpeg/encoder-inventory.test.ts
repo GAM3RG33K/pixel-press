@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { parseEncoderListing, resolveFallbackCodec } from "./encoder-inventory";
 
-const encodersWithH264H265VP8 = [
+const encodersWithH264H265VP9 = [
   "V..... = Video",
   "------",
   "V....D libx264              libx264 H.264 / AVC",
   "V....D libx265              libx265 H.265 / HEVC",
-  "V....D libvpx           libvpx VP8 (VP8/WebM)",
+  "V....D libvpx-vp9           libvpx VP9",
 ].join("\n");
 
 const encodersWithoutH265 = [
@@ -21,18 +21,18 @@ const encodersNotMatchingLibx264 = [
 ].join("\n");
 
 describe("parseEncoderListing", () => {
-  it("asserts libx264/libx265/libvpx true and multiThreaded passthrough (both true and false)", () => {
+  it("asserts libx264/libx265/libvpxVp9 true and multiThreaded passthrough (both true and false)", () => {
     const caps = parseEncoderListing(
-      encodersWithH264H265VP8.split("\n"),
+      encodersWithH264H265VP9.split("\n"),
       true,
     );
     expect(caps.libx264).toBe(true);
     expect(caps.libx265).toBe(true);
-    expect(caps.libvpx).toBe(true);
+    expect(caps.libvpxVp9).toBe(true);
     expect(caps.multiThreaded).toBe(true);
 
     const capsFalse = parseEncoderListing(
-      encodersWithH264H265VP8.split("\n"),
+      encodersWithH264H265VP9.split("\n"),
       false,
     );
     expect(capsFalse.multiThreaded).toBe(false);
@@ -61,7 +61,7 @@ describe("parseEncoderListing", () => {
 describe("resolveFallbackCodec", () => {
   it("requested h265 available -> {codec:h265, fellBack:false}", () => {
     const caps = parseEncoderListing(
-      encodersWithH264H265VP8.split("\n"),
+      encodersWithH264H265VP9.split("\n"),
       true,
     );
     const result = resolveFallbackCodec("h265", caps);
@@ -79,19 +79,19 @@ describe("resolveFallbackCodec", () => {
 
   it("requested h264 available -> no fallback", () => {
     const caps = parseEncoderListing(
-      encodersWithH264H265VP8.split("\n"),
+      encodersWithH264H265VP9.split("\n"),
       true,
     );
     const result = resolveFallbackCodec("h264", caps);
     expect(result).toEqual({ codec: "h264", fellBack: false });
   });
 
-  it("requested vp8 unavailable, libx264 available -> h264 fallback", () => {
+  it("requested vp9 unavailable, libx264 available -> h264 fallback", () => {
     const caps = parseEncoderListing(
       encodersWithoutH265.split("\n"),
       true,
     );
-    const result = resolveFallbackCodec("vp8", caps);
+    const result = resolveFallbackCodec("vp9", caps);
     expect(result).toEqual({ codec: "h264", fellBack: true });
   });
 });
