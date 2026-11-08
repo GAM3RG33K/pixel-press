@@ -5,6 +5,25 @@
  */
 
 /** True when running inside a Tauri webview. */
+/** Public LLM candidate info from the embedded manifest. */
+export interface LlmCandidate {
+  id: string;
+  label: string;
+  description: string;
+  size_bytes: number;
+  quantization: string | null;
+  license: string | null;
+  license_url: string | null;
+  source_url: string | null;
+  url: string;
+  sha256: string;
+}
+
+export interface LlmStatus {
+  ready: boolean;
+  path: string | null;
+}
+
 export const isTauri = (): boolean =>
   typeof window !== "undefined" &&
   "__TAURI_INTERNALS__" in window;
@@ -65,4 +84,34 @@ export interface FfmpegStatus {
   ffprobe_present: boolean;
   ffmpeg_version: string | null;
   ffprobe_version: string | null;
+}
+
+/** Downloads an LLM GGUF file (sha256 verified); emits download-progress events. */
+export async function downloadLlm(modelId: string, spec: { url: string; sha256: string }): Promise<void> {
+  const mod = await import("@tauri-apps/api/core");
+  const dest = (await mod.invoke<string>("get_app_config_dir")) + `/models/${modelId}.gguf`;
+  await mod.invoke("download_file", {
+    eventId: `llm:${modelId}`,
+    url: spec.url,
+    expectedSha256: spec.sha256,
+    dest,
+  });
+}
+
+/** Returns the list of available LLM candidates. */
+export async function listLlmCandidates(): Promise<LlmCandidate[]> {
+  const mod = await import("@tauri-apps/api/core");
+  return mod.invoke<LlmCandidate[]>("available_models");
+}
+
+/** Returns LLM ready status. */
+export async function checkLlm(modelId: string): Promise<LlmStatus> {
+  const mod = await import("@tauri-apps/api/core");
+  return mod.invoke<LlmStatus>("check_for_llm_at", { modelId });
+}
+
+/** Remove a file by absolute path. Used to delete cached LLM weights. */
+export async function removeFile(path: string): Promise<boolean> {
+  const mod = await import("@tauri-apps/api/core");
+  return mod.invoke<boolean>("remove_file", { path });
 }

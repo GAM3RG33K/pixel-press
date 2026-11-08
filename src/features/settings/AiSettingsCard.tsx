@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { BrainCircuit, CheckCircle2, Download, Loader2, Trash2, Zap } from "lucide-react";
+import { BrainCircuit, Download, Loader2, Trash2, Zap } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -9,6 +10,7 @@ import {
   type AIMode,
   type UserPreferences,
 } from "@/lib/settings";
+import { isTauri, listLlmCandidates, downloadLlm, checkLlm, type LlmCandidate } from "@/lib/tauri";
 import { downloadModel, isModelCached, deleteModelFromCache } from "@/lib/ai/webllm";
 import { cn } from "@/lib/utils";
 
@@ -16,20 +18,14 @@ const PREF_OPTIONS: { id: AIMode; title: string; body: string; badge?: string }[
   {
     id: "rule-engine",
     title: "Instant Rule Mode",
-    body: "Zero downloads — the deterministic rule engine picks codec/CRF from metadata. Best for hero loops and batch jobs.",
+    body: "Zero downloads — deterministic rule engine picks codec/CRF from metadata. Best for hero loops and batch jobs.",
     badge: "0 MB",
   },
   {
     id: "smollm2-360m",
     title: "SmolLM2-360M (recommended)",
-    body: "Small local instruct model (~220 MB). Parses natural-language intent into a validated plan; falls back to rules on failure.",
-    badge: "~220 MB · WebGPU",
-  },
-  {
-    id: "qwen2-0.5b",
-    title: "Qwen2.5-0.5B (fallback)",
-    body: "Stronger instruction following; larger download. For developers who need precision over speed.",
-    badge: "~350 MB · WebGPU",
+    body: "Small local instruct model (~270 MB). Parses natural-language intent into a validated plan.",
+    badge: "~270 MB",
   },
 ];
 
@@ -44,60 +40,94 @@ export function AiSettingsCard() {
   const [selected, setSelected] = useState<AIMode>('rule-engine');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [modelCached, setModelCached] = useState<{ smollm2?: boolean; qwen2?: boolean }>({});
+  const [llmReady, setLlmReady] = useState<boolean | null>(null);
+  const [llmSpec, setLlmSpec] = useState<LlmCandidate | null>(null);
 
   useEffect(() => {
     loadPreferences().then((loaded) => {
       setPrefs(loaded);
       setSelected(loaded.aiMode);
     });
-    refreshCacheStates();
+    refresh();
+    const unlisten = listen<[string, number]>("download-progress", (event) => {
+      if (event.payload[0] === "llm:smollm2-360m") {
+        setDownloadProgress(event.payload[1]);
+      }
+    });
+    return () => { void unlisten.then((fn) => fn()); };
   }, []);
 
-  const modelCachedFor = (mode: AIMode): boolean =>
-    mode === 'smollm2-360m' ? Boolean(modelCached.smollm2) : mode === 'qwen2-0.5b' ? Boolean(modelCached.qwen2) : false;
-
-  const refreshCacheStates = async () => {
-    const [smol, qwen] = await Promise.all([
-      isModelCached('smollm2-360m'),
-      isModelCached('qwen2-0.5b'),
-    ]);
-    setModelCached({ smollm2: smol, qwen2: qwen });
+  const refresh = async () => {
+    if (isTauri()) {
+      try {
+        const models = await listLlmCandidates();
+        const smollm = models.find((m) => m.id === 'smollm2-360m');
+        if (smollm) setLlmSpec(smollm);
+        const stat = await checkLlm('smollm2-360m');
+        setLlmReady(stat.ready);
+      } catch {
+        setLlmReady(null);
+      }
+    } else {
+      setLlmReady(await isModelCached('smollm2-360m'));
+    }
   };
 
   const setMode = async (mode: AIMode) => {
     setSelected(mode);
     setPrefs((current) => ({ ...current, aiMode: mode }));
     await savePreferences({ aiMode: mode });
-    setStatus(mode === 'rule-engine' ? 'Rule Mode enabled.' : 'AI model preference saved (download happens on demand).');
+    setStatus(mode === 'rule-engine' ? 'Rule Mode enabled.' : 'AI model preference saved.');
     window.setTimeout(() => setStatus(null), 1500);
-    if (mode !== 'rule-engine') {
-      void refreshCacheStates();
+  };
+
+  const handleDownload = async () => {
+    if (isTauri() && llmSpec) {
+      setIsDownloading(true);
+      setStatus('Downloading model…');
+      setDownloadProgress(0);
+      try {
+        await downloadLlm(llmSpec.id, { url: llmSpec.url, sha256: llmSpec.sha256 });
+        setStatus('Model cached and ready.');
+        await refresh();
+      } catch (e) {
+        setStatus(`Download failed: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setIsDownloading(false);
+        setDownloadProgress(null);
+        window.setTimeout(() => setStatus(null), 2500);
+      }
+      return;
+    }
+
+    // Fallback: WebLLM path (web-only build)
+    setIsDownloading(true);
+    setStatus('Downloading model to browser cache…');
+    try {
+      const result = await downloadModel('smollm2-360m', ({ progress }) => {
+        setDownloadProgress(progress);
+      });
+      await refresh();
+      setStatus(result.ok ? 'Model cached and ready.' : `Download failed: ${result.error ?? 'unknown error'}`);
+    } finally {
+      setIsDownloading(false);
+      setDownloadProgress(null);
+      window.setTimeout(() => setStatus(null), 2500);
     }
   };
 
-  const handleCheckModels = async () => {
-    setChecking(true);
-    setStatus('Checking WebLLM cache…');
-    const smol = await isModelCached('smollm2-360m');
-    const qwen = await isModelCached('qwen2-0.5b');
-    setModelCached({ smollm2: smol, qwen2: qwen });
-    setStatus(`SmolLM2-360M: ${smol ? 'cached' : 'not cached'} · Qwen2.5-0.5B: ${qwen ? 'cached' : 'not cached'}`);
-    setChecking(false);
-    window.setTimeout(() => setStatus(null), 2500);
-  };
-
-  const handleDeleteCached = async () => {
-    setIsDeleting(true);
-    setStatus('Deleting cached models…');
-    const okSmol = await deleteModelFromCache('smollm2-360m');
-    const okQwen = await deleteModelFromCache('qwen2-0.5b');
-    setModelCached({ smollm2: !okSmol ? (modelCached.smollm2 ?? true) : false, qwen2: !okQwen ? (modelCached.qwen2 ?? true) : false });
-    setStatus(`Removed: ${[okSmol ? 'SmolLM2' : null, okQwen ? 'Qwen2.5' : null].filter(Boolean).join(' · ')}`.trim() || 'Model cache clear done.');
-    setIsDeleting(false);
-    window.setTimeout(() => setStatus(null), 2500);
+  const handleDelete = async () => {
+    if (isTauri() && llmSpec) {
+      const mod = await import("@tauri-apps/api/core");
+      const modelPath = `${(await mod.invoke<string>("get_app_config_dir"))}/models/smollm2-360m.gguf`;
+      const ok = await mod.invoke<boolean>("remove_file", { path: modelPath }).catch(() => false);
+      setStatus(ok ? 'Model removed.' : 'Could not delete model.');
+      await refresh();
+    } else {
+      await deleteModelFromCache('smollm2-360m');
+      setStatus('Model removed.');
+      await refresh();
+    }
   };
 
   const handleReset = async () => {
@@ -113,6 +143,10 @@ export function AiSettingsCard() {
     window.setTimeout(() => setStatus(null), 2500);
   };
 
+  const showModelPanel = selected !== 'rule-engine';
+  const totalBytes = llmSpec?.size_bytes ?? 270590880;
+  const readyLabel = llmReady === true ? 'Model cached and ready.' : llmReady === false ? 'Model not downloaded yet.' : 'Checking…';
+
   return (
     <section
       aria-labelledby="ai-settings"
@@ -124,24 +158,15 @@ export function AiSettingsCard() {
             Local AI
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Choose how the intent bar is interpreted. Rule Mode is instant and needs no download.
+            Choose how intent is interpreted. Rule Mode needs no download.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs">
-          <Button size="sm" variant="outline" onClick={handleCheckModels} disabled={checking}>
-            {checking ? null : <CheckCircle2 className="size-4" aria-hidden />}
-            Check cache
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleDeleteCached} disabled={checking}>
-            <Trash2 className="size-4" aria-hidden />
-          </Button>
-          <Button size="sm" variant="ghost" onClick={handleReset}>
-            Reset
-          </Button>
-        </div>
+        <Button size="sm" variant="ghost" onClick={handleReset}>
+          Reset
+        </Button>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {PREF_OPTIONS.map((option) => {
           const active = selected === option.id;
           return (
@@ -158,11 +183,9 @@ export function AiSettingsCard() {
               )}
             >
               <p className="flex items-center gap-1.5 text-xs font-semibold">
-                {option.id === 'rule-engine' ? (
-                  <Zap className="size-3.5 text-warning" aria-hidden />
-                ) : (
-                  <BrainCircuit className="size-3.5 text-info" aria-hidden />
-                )}
+                {option.id === 'rule-engine'
+                  ? <Zap className="size-3.5 text-warning" aria-hidden />
+                  : <BrainCircuit className="size-3.5 text-info" aria-hidden />}
                 {option.title}
               </p>
               <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{option.body}</p>
@@ -175,82 +198,40 @@ export function AiSettingsCard() {
         })}
       </div>
 
-      {selected !== 'rule-engine' ? (
+      {showModelPanel ? (
         <div className={cn(
           "mt-3 flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 text-[11px]",
-          modelCachedFor(selected)
-            ? "border-success/30 bg-success/5 text-success"
-            : "border-warning/30 bg-warning/5 text-warning",
+          llmReady ? "border-success/30 bg-success/5 text-success" : "border-warning/30 bg-warning/5 text-warning",
         )}>
-          <span className="font-medium">
-            {modelCachedFor(selected)
-              ? "Model cached and ready."
-              : "Model not downloaded yet."}
-          </span>
-          {modelCachedFor(selected) ? (
+          <span className="font-medium">{readyLabel}</span>
+          {llmReady ? (
             <>
-              <span className="text-[11px] opacity-90">WebLLM verified in cache.</span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={async () => {
-                  setIsDeleting(true);
-                  const ok = await deleteModelFromCache(selected as 'smollm2-360m' | 'qwen2-0.5b');
-                  await refreshCacheStates();
-                  setStatus(ok ? 'Model removed from cache.' : 'Could not delete model.');
-                  setIsDeleting(false);
-                  window.setTimeout(() => setStatus(null), 2000);
-                }}
-                disabled={isDeleting}
-              >
-                {isDeleting ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Trash2 className="size-4" aria-hidden />}
-                Remove model
+              <span className="opacity-90">{llmSpec?.source_url ?? 'Model on disk.'}</span>
+              <Button size="sm" variant="outline" onClick={handleDelete}>
+                <Trash2 className="size-4" aria-hidden />
+                Remove
               </Button>
             </>
           ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                setIsDownloading(true);
-                setStatus('Downloading model to browser cache…');
-                setDownloadProgress(0);
-                const result = await downloadModel(selected as 'smollm2-360m' | 'qwen2-0.5b', ({ progress, text }) => {
-                  setDownloadProgress(progress);
-                  setStatus(text);
-                });
-                setIsDownloading(false);
-                setDownloadProgress(null);
-                if (result.ok) {
-                  await refreshCacheStates();
-                  setStatus('Model cached and ready.');
-                } else {
-                  setStatus(`Download failed: ${result.error ?? 'unknown error'}`);
-                }
-                window.setTimeout(() => setStatus(null), 2500);
-              }}
-              disabled={isDownloading}
-            >
-              {isDownloading ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-              ) : (
-                <Download className="size-4" aria-hidden />
-              )}
+            <Button size="sm" variant="outline" onClick={handleDownload} disabled={isDownloading}>
+              {isDownloading
+                ? <Loader2 className="size-4 animate-spin" aria-hidden />
+                : <Download className="size-4" aria-hidden />}
               {isDownloading
                 ? downloadProgress !== null
-                  ? `Downloading… ${Math.round(downloadProgress * 100)}%`
+                  ? `Downloading… ${Math.round((downloadProgress / totalBytes) * 100)}%`
                   : 'Starting download…'
-                : `Download ${PREF_OPTIONS.find((o) => o.id === selected)?.title.split(' ')[0] ?? 'model'}`}
+                : `Download ${Math.round(totalBytes / 1024 / 1024)} MB`}
             </Button>
           )}
         </div>
       ) : null}
 
-      {downloadProgress !== null ? (
+      {isDownloading && downloadProgress !== null ? (
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary">
           <div
             className="h-full rounded-full bg-primary transition-[width] duration-200"
-            style={{ width: `${Math.round(downloadProgress * 100)}%` }}
+            style={{ width: `${Math.min(100, Math.round((downloadProgress / totalBytes) * 100))}%` }}
           />
         </div>
       ) : null}
@@ -259,7 +240,7 @@ export function AiSettingsCard() {
         <span className={cn("size-1.5 rounded-full", prefs.aiMode === 'rule-engine' ? "bg-success" : "bg-info")} aria-hidden />
         Active: {PREF_OPTIONS.find((o) => o.id === prefs.aiMode)?.title}
         <span className="ml-auto hidden sm:inline">
-          Auto-strip audio preference: {prefs.autoStripAudio ? 'on' : 'off'}
+          Auto-strip audio: {prefs.autoStripAudio ? 'on' : 'off'}
         </span>
       </div>
 

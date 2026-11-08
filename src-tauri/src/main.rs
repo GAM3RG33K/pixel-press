@@ -21,8 +21,12 @@ fn main() {
             check_for_ffmpeg,
             platform_info,
             setup::required_artifacts,
+            setup::available_models,
             setup::download_tool,
+            setup::download_file,
+            setup::check_for_llm_at,
             setup::resolve_tool,
+            setup::remove_file,
         ])
         .setup(|app| {
             let path = app
@@ -60,8 +64,7 @@ pub struct FfmpegStatus {
 #[tauri::command]
 fn check_for_ffmpeg(app: AppHandle) -> FfmpegStatus {
     use std::process::Command;
-    use tauri::Manager;
-
+    
     let resolve = |name: &str| -> Option<(String, String)> {
         let bin = setup::bin_dir(&app);
         let downloaded = bin.join(name);
@@ -128,30 +131,6 @@ fn platform_info() -> serde_json::Value {
         "arch": arch,
         "tauri": env!("CARGO_PKG_VERSION"),
     })
-}
-
-/// Returns `Some(version_str)` if the tool is on PATH; `None` otherwise.
-fn tool_present(cmd: &str) -> Option<bool> {
-    if std::process::Command::new(cmd)
-        .arg("-version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
-        Some(true)
-    } else {
-        None
-    }
-}
-
-/// Returns the full `ffmpeg -version` first line, or `None` if the tool is unavailable.
-fn tool_version(cmd: &str) -> Option<String> {
-    let output = std::process::Command::new(cmd).arg("-version").output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout.lines().next().map(|l| l.trim().to_string())
 }
 
 #[tauri::command]
@@ -281,8 +260,7 @@ fn get_app_config_dir(app: AppHandle) -> Result<String, String> {
 }
 
 fn resolve_exe(app: &AppHandle, name: &str) -> Option<String> {
-    use tauri::Manager;
-    let bin = setup::bin_dir(app);
+        let bin = setup::bin_dir(app);
     let candidates = if cfg!(windows) {
         vec![bin.join(format!("{name}.exe")), bin.join(name)]
     } else {
