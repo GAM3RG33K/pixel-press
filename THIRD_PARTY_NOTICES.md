@@ -10,7 +10,7 @@
 - Included encoders relevant to this app:
   - `libx264` (H.264 — universal baseline)
   - `libx265` (H.265 — primary MP4 when source offer is provided)
-  - `libvpx` (VP8 — WebM)
+  - `libvpx-vp9` (VP9 — WebM)
 
 Users who redistribute modified builds of the app must comply with the GPL terms for the downloaded FFmpeg.
 

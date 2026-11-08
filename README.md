@@ -29,7 +29,7 @@ Distribution format: GitHub Releases triggered by tag push (`v*.*.*`).
 3. Codec fallbacks H.264 ↔ H.265 swap with a loud notice when one is unavailable.
 4. Outputs:
    - `video-h264.mp4` (Universal)
-   - `video-vp8.webm` (WebM)
+   - `video-vp9.webm` (WebM)
 5. Ready-to-drop `<video>` HTML and JSX snippets with `playsinline` / `muted` / `preload="metadata"`.
 
 ## Stack
