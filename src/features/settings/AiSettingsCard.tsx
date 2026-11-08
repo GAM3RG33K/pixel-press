@@ -141,7 +141,7 @@ export function AiSettingsCard() {
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {PREF_OPTIONS.map((option) => {
           const active = selected === option.id;
           return (
