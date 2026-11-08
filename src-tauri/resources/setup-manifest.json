@@ -1,0 +1,52 @@
+{
+  "version": "0.1.0",
+  "generated": "2026-11-08",
+  "artifacts": {
+    "ffmpeg_linux_amd64": {
+      "url": "https://ffmpeg.martin-riedl.de/download/linux/amd64/1793455460_N-128220-gbea9d176f7/ffmpeg.zip",
+      "sha256": "40d372a27c4f7e75a6732e9169a5485efff4d25ee727df78b4b9b559b0794d74",
+      "sizeBytes": 33560764
+    },
+    "ffmpeg_linux_arm64": {
+      "url": "https://ffmpeg.martin-riedl.de/download/linux/arm64/1793453904_N-128220-gbea9d176f7/ffmpeg.zip",
+      "sha256": "0a8976e6469af1e9867a45ebc1d8278061e85a0cf6ba83df3e90cc63e32e5490",
+      "sizeBytes": 29000015
+    },
+    "ffmpeg_macos_amd64": {
+      "url": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1767299902_N-122320-g38e89fe502/ffmpeg.zip",
+      "sha256": "6f0736d424b7426f8cbb7bba5c5448d94c976c138c669593b1f40ba534ed192f",
+      "sizeBytes": 32900587
+    },
+    "ffmpeg_macos_arm64": {
+      "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1793460248_N-128220-gbea9d176f7/ffmpeg.zip",
+      "sha256": "8094d88c459b6e0ab3bd69e96729485b50cb859451ba92c3779818d38d4b656d",
+      "sizeBytes": 28618380
+    },
+    "ffprobe_linux_amd64": {
+      "url": "https://ffmpeg.martin-riedl.de/download/linux/amd64/1793455460_N-128220-gbea9d176f7/ffprobe.zip",
+      "sha256": "c7630080e1dc194811f0466460770e8fa9885452041514258ffc28d8ee16df82",
+      "sizeBytes": 33452252
+    },
+    "ffprobe_linux_arm64": {
+      "url": "https://ffmpeg.martin-riedl.de/download/linux/arm64/1793453904_N-128220-gbea9d176f7/ffprobe.zip",
+      "sha256": "a41f13606f4d93ea94a78c23c7ff28ae6be68c075cace606af5331e6a23b4603",
+      "sizeBytes": 28892252
+    },
+    "ffprobe_macos_amd64": {
+      "url": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1767299902_N-122320-g38e89fe502/ffprobe.zip",
+      "sha256": "46852ce00ae6f722ed30be269f310ea96c106a4246f2905d3147c5e02293081c",
+      "sizeBytes": 32799965
+    },
+    "ffprobe_macos_arm64": {
+      "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1793460248_N-128220-gbea9d176f7/ffprobe.zip",
+      "sha256": "4587e2f13de2fa368067ad903def39306ba697cc07c1bb27da5753161628ce76",
+      "sizeBytes": 28531365
+    },
+    "ffmpeg_windows_amd64": {
+      "url": "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.2-essentials_build.zip",
+      "sha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba",
+      "sizeBytes": 114768076,
+      "includes": ["ffmpeg.exe", "ffprobe.exe"]
+    }
+  }
+}

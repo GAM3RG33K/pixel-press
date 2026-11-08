@@ -3,6 +3,8 @@
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 
+mod setup;
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
@@ -18,6 +20,9 @@ fn main() {
             get_app_config_dir,
             check_for_ffmpeg,
             platform_info,
+            setup::required_artifacts,
+            setup::download_tool,
+            setup::resolve_tool,
         ])
         .setup(|app| {
             let path = app
@@ -39,22 +44,79 @@ pub struct FsEntry {
     pub last_modified: u64,
 }
 
-#[derive(serde::Serialize, Debug)]
+#[derive(serde::Serialize, Debug, Clone)]
 pub struct FfmpegStatus {
     pub ffmpeg_present: bool,
     pub ffprobe_present: bool,
     pub ffmpeg_version: Option<String>,
     pub ffprobe_version: Option<String>,
+    pub ffmpeg_path: Option<String>,
+    pub ffprobe_path: Option<String>,
+    pub app_data_dir: Option<String>,
+    pub platform_os: String,
+    pub platform_arch: String,
 }
 
 #[tauri::command]
-fn check_for_ffmpeg() -> FfmpegStatus {
+fn check_for_ffmpeg(app: AppHandle) -> FfmpegStatus {
+    use std::process::Command;
+    use tauri::Manager;
+
+    let resolve = |name: &str| -> Option<(String, String)> {
+        let bin = setup::bin_dir(&app);
+        let downloaded = bin.join(name);
+        let downloaded_exe = bin.join(format!("{name}.exe"));
+        if downloaded.is_file() {
+            let v = Command::new(&downloaded).arg("-version").output().ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).lines().next().unwrap_or("").trim().to_string());
+            return v.map(|ver| (downloaded.to_string_lossy().into_owned(), ver));
+        }
+        if downloaded_exe.is_file() {
+            let v = Command::new(&downloaded_exe).arg("-version").output().ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).lines().next().unwrap_or("").trim().to_string());
+            return v.map(|ver| (downloaded_exe.to_string_lossy().into_owned(), ver));
+        }
+        if let Some(found) = which(name) {
+            let v = Command::new(&found).arg("-version").output().ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).lines().next().unwrap_or("").trim().to_string());
+            return v.map(|ver| (found, ver));
+        }
+        None
+    };
+
+    let ffmpeg = resolve("ffmpeg");
+    let ffprobe = resolve("ffprobe");
+
     FfmpegStatus {
-        ffmpeg_present: tool_present("ffmpeg").is_some(),
-        ffprobe_present: tool_present("ffprobe").is_some(),
-        ffmpeg_version: tool_version("ffmpeg"),
-        ffprobe_version: tool_version("ffprobe"),
+        ffmpeg_present: ffmpeg.is_some(),
+        ffprobe_present: ffprobe.is_some(),
+        ffmpeg_version: ffmpeg.as_ref().map(|(_, v)| v.clone()),
+        ffprobe_version: ffprobe.as_ref().map(|(_, v)| v.clone()),
+        ffmpeg_path: ffmpeg.map(|(p, _)| p),
+        ffprobe_path: ffprobe.map(|(p, _)| p),
+        app_data_dir: app.path().app_data_dir().ok().map(|p| p.to_string_lossy().into_owned()),
+        platform_os: std::env::consts::OS.to_string(),
+        platform_arch: std::env::consts::ARCH.to_string(),
     }
+}
+
+fn which(cmd: &str) -> Option<String> {
+    if let Ok(p) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&p) {
+            let candidate = dir.join(cmd);
+            if candidate.is_file() {
+                return Some(candidate.to_string_lossy().into_owned());
+            }
+            let candidate_exe = dir.join(format!("{cmd}.exe"));
+            if candidate_exe.is_file() {
+                return Some(candidate_exe.to_string_lossy().into_owned());
+            }
+        }
+    }
+    None
 }
 
 #[tauri::command]
@@ -93,8 +155,10 @@ fn tool_version(cmd: &str) -> Option<String> {
 }
 
 #[tauri::command]
-fn ffprobe_json(input_path: String) -> Result<String, String> {
-    let output = std::process::Command::new("ffprobe")
+fn ffprobe_json(app: AppHandle, input_path: String) -> Result<String, String> {
+    let ffprobe = resolve_exe(&app, "ffprobe")
+        .ok_or_else(|| "ffprobe not found (downloaded bin dir or PATH). Run setup first.".to_string())?;
+    let output = std::process::Command::new(&ffprobe)
         .args([
             "-hide_banner",
             "-v", "error",
@@ -104,13 +168,13 @@ fn ffprobe_json(input_path: String) -> Result<String, String> {
             &input_path,
         ])
         .output()
-        .map_err(|e| format!("ffprobe spawn failed (is ffmpeg/ffprobe installed?): {e}"))?;
+        .map_err(|e| format!("ffprobe spawn failed ({e}) — path: {ffprobe}"))?;
     check(&output)?;
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 #[tauri::command]
-fn ffprobe_bytes(bytes: Vec<u8>, file_name: String) -> Result<String, String> {
+fn ffprobe_bytes(app: AppHandle, bytes: Vec<u8>, file_name: String) -> Result<String, String> {
     let suffix = file_name
         .rsplit('.')
         .next()
@@ -119,7 +183,7 @@ fn ffprobe_bytes(bytes: Vec<u8>, file_name: String) -> Result<String, String> {
         .to_string();
     let tmp = std::env::temp_dir().join(format!("pixel-press-{}.{suffix}", std::process::id()));
     std::fs::write(&tmp, &bytes).map_err(|e| format!("could not write temp file {tmp:?}: {e}"))?;
-    let out = ffprobe_json(tmp.to_string_lossy().into_owned());
+    let out = ffprobe_json(app, tmp.to_string_lossy().into_owned());
     let _ = std::fs::remove_file(&tmp);
     out
 }
@@ -133,7 +197,9 @@ fn generate_test_clip(app: AppHandle) -> Result<String, String> {
         .join("pixel-press-test-clip.mp4");
     let out_str = out_path.to_string_lossy().into_owned();
     let _ = std::fs::remove_file(&out_path);
-    let status = std::process::Command::new("ffmpeg")
+    let ffmpeg = resolve_exe(&app, "ffmpeg")
+        .ok_or_else(|| "ffmpeg not found (downloaded bin dir or PATH). Run setup first.".to_string())?;
+    let status = std::process::Command::new(&ffmpeg)
         .args([
             "-hide_banner", "-loglevel", "error", "-y",
             "-f", "lavfi",
@@ -212,6 +278,35 @@ async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
 fn get_app_config_dir(app: AppHandle) -> Result<String, String> {
     let p = app.path().app_data_dir().map_err(|e| format!("app_data_dir: {e}"))?;
     Ok(p.to_string_lossy().into_owned())
+}
+
+fn resolve_exe(app: &AppHandle, name: &str) -> Option<String> {
+    use tauri::Manager;
+    let bin = setup::bin_dir(app);
+    let candidates = if cfg!(windows) {
+        vec![bin.join(format!("{name}.exe")), bin.join(name)]
+    } else {
+        vec![bin.join(name)]
+    };
+    for c in candidates {
+        if c.is_file() {
+            return Some(c.to_string_lossy().into_owned());
+        }
+    }
+    // fall back to PATH
+    if let Ok(p) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&p) {
+            let cand = dir.join(name);
+            if cand.is_file() {
+                return Some(cand.to_string_lossy().into_owned());
+            }
+            let cand_exe = dir.join(format!("{name}.exe"));
+            if cand_exe.is_file() {
+                return Some(cand_exe.to_string_lossy().into_owned());
+            }
+        }
+    }
+    None
 }
 
 fn check(output: &std::process::Output) -> Result<(), String> {
