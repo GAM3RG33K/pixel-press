@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { CheckCircle2, Loader2, Play } from "lucide-react";
+import { CheckCircle2, Loader2, Play, Terminal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { codecFallbackNotice, uniqueFallbackNotices } from "@/lib/ffmpeg/plan";
 import type { EncoderCapabilities } from "@/types/media";
+import { isTauri, tauriApi } from "@/lib/tauri";
 
 import { CodecFallbackNotice } from "./CodecFallbackNotice";
 
@@ -17,8 +18,15 @@ type CheckState =
       capabilities: EncoderCapabilities;
     };
 
+type NativeCheckState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; path: string; summary: string };
+
 export function EngineCheckCard() {
   const [state, setState] = useState<CheckState>({ status: "idle" });
+  const [nativeState, setNativeState] = useState<NativeCheckState>({ status: "idle" });
 
   async function runCheck() {
     setState({ status: "loading" });
@@ -34,6 +42,28 @@ export function EngineCheckCard() {
       });
     } catch (error) {
       setState({
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  async function runNativeCheck() {
+    setNativeState({ status: "loading" });
+    try {
+      const path = await tauriApi.generateTestClip();
+      const json = await tauriApi.ffprobeJson(path);
+      const parsed = JSON.parse(json) as {
+        streams?: { codec_name?: string; width?: number; height?: number }[];
+        format?: { duration?: string };
+      };
+      const v = parsed.streams?.find((s) => s.codec_name);
+      const summary = `${v?.width ?? "?"}x${v?.height ?? "?"} · ${v?.codec_name ?? "?"} · ${
+        parsed.format?.duration ? Number(parsed.format.duration).toFixed(1) + "s" : "unknown duration"
+      }`;
+      setNativeState({ status: "ready", path, summary });
+    } catch (error) {
+      setNativeState({
         status: "error",
         message: error instanceof Error ? error.message : String(error),
       });
@@ -105,6 +135,42 @@ export function EngineCheckCard() {
         <p className="mt-4 text-sm text-destructive" role="alert">
           Engine check failed: {state.message}
         </p>
+      ) : null}
+
+      {isTauri() ? (
+        <div className="mt-4 rounded-lg border border-info/30 bg-info/5 p-3 text-xs text-info">
+          <p className="font-medium">Running in Tauri (native engine)</p>
+          <p className="mt-1 opacity-90">
+            The web-WASM engine below is not required — native FFmpeg already works here.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-2"
+            onClick={runNativeCheck}
+            disabled={nativeState.status === "loading"}
+          >
+            {nativeState.status === "loading" ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <Terminal className="size-4" aria-hidden />
+            )}
+            {nativeState.status === "loading" ? "Probing…" : "Test native ffprobe"}
+          </Button>
+          {nativeState.status === "ready" ? (
+            <p className="mt-2 text-[11px]">
+              <CheckCircle2 className="mr-1 inline size-3.5 text-success" aria-hidden />
+              Native probe: {nativeState.summary}
+              <br />
+              <code className="font-mono text-[10px] opacity-80">{nativeState.path}</code>
+            </p>
+          ) : null}
+          {nativeState.status === "error" ? (
+            <p className="mt-2 text-[11px] text-destructive" role="alert">
+              Native ffprobe failed: {nativeState.message}
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );

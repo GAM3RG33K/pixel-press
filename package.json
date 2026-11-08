@@ -20,6 +20,7 @@
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "@mlc-ai/web-llm": "^0.2.87",
+    "@tauri-apps/api": "^2.12.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "coi-serviceworker": "^0.1.7",
