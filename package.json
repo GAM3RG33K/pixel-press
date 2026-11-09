@@ -12,7 +12,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "icons": "bun scripts/generate-icons.mjs",
-    "tauri": "cargo tauri",
+    "tauri": "bunx tauri",
     "tauri:dev": "cargo tauri dev",
     "tauri:build": "cargo tauri build"
   },
