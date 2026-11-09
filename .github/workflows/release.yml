@@ -20,12 +20,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: macOS Universal
+          - name: macOS Apple Silicon
             os: macos-13
-            target: universal-apple-darwin
-            rust_targets: x86_64-apple-darwin,aarch64-apple-darwin
+            target: aarch64-apple-darwin
+            rust_targets: aarch64-apple-darwin
             bundles: dmg
-            artifact_glob: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            artifact_glob: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
           - name: Windows x64
             os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -133,7 +133,7 @@ jobs:
 
             | Platform | Asset | Requirements |
             | --- | --- | --- |
-            | macOS Universal (Intel + Apple Silicon) | `pixel-press_${{ github.ref_name }}_*_universal.dmg` | macOS 10.15+ |
+            | macOS Apple Silicon | `pixel-press_${{ github.ref_name }}_*_aarch64.dmg` | macOS 11+ on Apple Silicon |
             | Windows x64 | `*_x64_en-US.msi` | Windows 10 1809+, WebView2 (built in on Win 11) |
             | Windows ARM64 | `*_arm64_en-US.msi` | Windows 11 on ARM |
             | Linux x64 | `*_amd64.AppImage` or `*_amd64.deb` | glibc ≥ 2.31, WebKitGTK 4.1 |
