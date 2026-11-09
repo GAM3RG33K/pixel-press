@@ -1,0 +1,12 @@
+name: CI
+
+# Build-only dry run of the full release matrix. No GitHub Release is created;
+# bundles are uploaded as workflow artifacts (7-day retention).
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      tagName: ""
