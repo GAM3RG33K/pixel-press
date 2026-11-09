@@ -42,8 +42,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Set up Node (for npm/bun toolchain)
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Bun via npm
+        run: npm install -g bun@1.4.4
 
       - name: Install system dependencies (Ubuntu)
         if: startsWith(matrix.platform, 'ubuntu')
