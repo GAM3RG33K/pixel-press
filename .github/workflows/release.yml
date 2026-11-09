@@ -21,7 +21,7 @@ jobs:
       matrix:
         include:
           - name: macOS Universal
-            os: macos-14
+            os: macos-13
             target: universal-apple-darwin
             rust_targets: x86_64-apple-darwin,aarch64-apple-darwin
             bundles: dmg
