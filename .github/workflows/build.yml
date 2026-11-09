@@ -68,6 +68,9 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Apple Silicon bindgen pin (not applied to Linux/Windows leg)
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.platform == 'macos-latest' && '10.15' || '' }}
+          BINDGEN_EXTRA_CLANG_ARGS: ${{ matrix.platform == 'macos-latest' && '-mmacosx-version-min=10.15' || '' }}
         with:
           tagName: ${{ inputs.tagName }}
           releaseName: "pixel-press ${{ inputs.tagName }}"
