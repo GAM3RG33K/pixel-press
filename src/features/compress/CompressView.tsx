@@ -37,6 +37,7 @@ import {
   estimateSizeBytes,
 } from "@/lib/workflow";
 import { useAiMode } from "@/lib/ai/use-ai-mode";
+import { registerTask, updateTask, completeTask, failTask, cancelTask } from "@/lib/tasks/registry";
 import { resolvePlan } from "@/lib/ai/plan";
 import { fetchSampleClip } from "@/lib/sample";
 import { diag, captureError } from "@/lib/diagnostics";
@@ -199,6 +200,7 @@ export function CompressView() {
     const base = file.name.replace(/\.[^./]+$/, "") || "video";
 
     const variantsToEncode = variantSet?.variants ?? [];
+      let taskId: string | null = null;
     const useNative = isNativeEngine();
     try {
       const service = useNative ? null : getFfmpegService();
@@ -208,6 +210,14 @@ export function CompressView() {
         if (abortRef.current.signal.aborted) return;
         const outName =
           variant.container === "webm" ? `${base}-webm.webm` : `${base}-h264.mp4`;
+        taskId = registerTask({
+          workbench: "compress",
+          label: `Compress · ${variant.label}`,
+          stage: "Starting encode…",
+          progress: 0,
+          cancel: () => abortRef.current?.abort(),
+        });
+        const currentTaskId = taskId;
 
         let encodedResult;
         if (useNative) {
@@ -228,7 +238,10 @@ export function CompressView() {
             stripAudio: variant.stripAudio,
             faststart: variant.container === "mp4",
             durationSeconds: metadata.duration,
-            onProgress: (p) => setProgress(p),
+            onProgress: (p) => {
+              setProgress(p);
+              updateTask(currentTaskId, { progress: p, stage: `${variant.label} · encoding` });
+            },
             signal: abortRef.current.signal,
           });
           const bytes = await nativeReadAndRemove(outPath);
@@ -255,7 +268,10 @@ export function CompressView() {
             stripAudio: variant.stripAudio,
             faststart: variant.container === "mp4",
             durationSeconds: metadata.duration,
-            onProgress: ({ progress: p }) => setProgress(p),
+            onProgress: ({ progress: p }) => {
+              setProgress(p);
+              updateTask(currentTaskId, { progress: p, stage: `${variant.label} · encoding` });
+            },
             signal: abortRef.current.signal,
           });
         }
@@ -276,6 +292,7 @@ export function CompressView() {
           }),
           container: variant.container,
         });
+        completeTask(currentTaskId);
         setProgress(0);
 
         diag.info('compress', `variant encoded: ${variant.label}`, {
@@ -291,6 +308,7 @@ export function CompressView() {
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") {
         diag.info('compress', 'encode aborted by user');
+        if (taskId) cancelTask(taskId);
         setStatus("ready");
         return;
       }
@@ -299,6 +317,7 @@ export function CompressView() {
         name: normalized.name,
         stack: normalized.stack,
       });
+      if (taskId) failTask(taskId, normalized.message);
       setError(normalized.message);
       setStatus("error");
     }
