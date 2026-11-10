@@ -1,18 +1,122 @@
 name: Release
 
-# Tag pushes (v*.*.*) build the full matrix and create a DRAFT release with all
-# bundles attached (publish it from the Releases page when you're ready).
+# Build and publish pixel-press for every supported platform, following the
+# official Tauri v2 GitHub pipeline:
+#   https://v2.tauri.app/distribute/pipelines/github/
+#
+# Publishing: push a version tag; the workflow builds all targets and creates a
+# DRAFT GitHub Release with the bundles attached. Review it, publish from the
+# Releases page.
+#
+#   git tag -a v0.1.0 -m "v0.1.0"
+#   git push origin v0.1.0
+#
+# Dry run without a tag: Actions → Release → Run workflow. Builds all five
+# targets but creates NO release and uploads nothing — use it to verify the
+# pipeline on demand.
+#
+# Platforms (docs/README "Targets"):
+#   - macOS Apple Silicon  (aarch64-apple-darwin)  .dmg
+#   - macOS Intel          (x86_64-apple-darwin)   .dmg
+#   - Linux x64            (ubuntu-22.04)          .AppImage, .deb
+#   - Linux ARM64          (ubuntu-22.04-arm)      .AppImage, .deb
+#   - Windows x64          (windows-latest)        .msi
+#
+# Windows ARM64 is intentionally not built: llama-cpp-sys-4 (the native LLM
+# backend) does not link on that toolchain yet. Do not add it back without
+# verifying a full release build first.
+
 on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  release:
-    uses: ./.github/workflows/build.yml
-    with:
-      tagName: ${{ github.ref_name }}
-      draft: true
+  publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            platform: macos-latest
+            args: --target aarch64-apple-darwin --bundles dmg
+          - name: macOS Intel
+            platform: macos-latest
+            args: --target x86_64-apple-darwin --bundles dmg
+          - name: Linux x64
+            platform: ubuntu-22.04
+            args: --bundles appimage,deb
+          - name: Linux ARM64
+            platform: ubuntu-22.04-arm
+            args: --bundles appimage,deb
+          - name: Windows x64
+            platform: windows-latest
+            args: --bundles msi
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node (for the bun toolchain)
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      # bun is installed from the npm registry: setup-bun downloads from
+      # GitHub Releases, which intermittently 504s.
+      - name: Install bun
+        run: npm install -g bun@1.4.4
+
+      - name: Install system dependencies (Ubuntu)
+        if: startsWith(matrix.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Targets are only needed on the macOS runners (both arches).
+          targets: ${{ startsWith(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Only a tag push publishes. On workflow_dispatch these are empty,
+          # which tauri-action treats as "build only, upload nothing".
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: ${{ github.ref_type == 'tag' && format('pixel-press {0}', github.ref_name) || '' }}
+          releaseDraft: true
+          prerelease: ${{ github.ref_type == 'tag' && contains(github.ref_name, '-') }}
+          releaseBody: |
+            **pixel-press** — local-first video compression for the web. Nothing uploads; everything runs on your machine.
+
+            First launch downloads FFmpeg/FFprobe and (optionally) a ~270 MB on-device LLM — SHA-256-verified, installed into your app data directory. The app then works fully offline. No accounts, no telemetry.
+
+            > Unsigned build — macOS Gatekeeper / Windows SmartScreen will warn. macOS: right-click → Open. Windows: More info → Run anyway.
+
+            | Platform | Asset | Requirements |
+            | --- | --- | --- |
+            | macOS Apple Silicon | `*_aarch64.dmg` | macOS 11+ on Apple Silicon |
+            | macOS Intel | `*_x64.dmg` | macOS 10.15+ on Intel |
+            | Windows x64 | `*_x64_en-US.msi` | Windows 10 1809+, WebView2 (built in on Win 11) |
+            | Linux x64 | `*_amd64.AppImage` or `*_amd64.deb` | glibc ≥ 2.31, WebKitGTK 4.1 |
+            | Linux ARM64 | `*_arm64.AppImage` or `*_arm64.deb` | Raspberry Pi OS / Ubuntu ARM64 |
+
+            `setup-manifest.json` lists SHA-256 + size + source for the FFmpeg/FFprobe/LLM artifacts downloaded on first launch.
+
+            pixel-press is MIT-licensed. FFmpeg/FFprobe are separate GPL/LGPL binaries downloaded by you at first launch; LLM weights (SmolLM2-360M, Apache-2.0) likewise. See `THIRD_PARTY_NOTICES.md`.
+          args: ${{ matrix.args }}

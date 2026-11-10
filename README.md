@@ -16,11 +16,24 @@ Distribution format: GitHub Releases triggered by tag push (`v*.*.*`).
 
 | Platform | Architecture | Package |
 | --- | --- | --- |
-| macOS | Universal (arm64 + x86_64) | `.dmg` |
+| macOS | Apple Silicon (arm64) | `.dmg` |
+| macOS | Intel (x86_64) | `.dmg` |
 | Windows | x64 | `.msi` |
-| Windows | ARM64 | `.msi` |
 | Linux | x86_64 | AppImage, `.deb` |
 | Linux | ARM64 | AppImage, `.deb` |
+
+> Windows ARM64 is currently not shipped: the native LLM backend (`llama-cpp-sys-4`) does not link on that toolchain yet. It will return once that is fixed.
+
+## Releasing (maintainers)
+
+Push a version tag; the Release workflow builds all five targets and creates a **draft** GitHub Release with the bundles attached. Review it, then publish from the Releases page.
+
+```sh
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
+```
+
+You can also run a dry run from **Actions → Release → Run workflow**: it builds all five targets without creating a release or uploading anything. Use it to verify the pipeline before tagging.
 
 ## How it works
 
