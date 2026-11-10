@@ -20,6 +20,7 @@ import { resolvePlan } from "@/lib/ai/plan";
 import { diag, captureError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
 import { buildVideoSnippet } from "@/lib/snippet";
+import { registerTask, updateTask, completeTask, failTask, cancelTask } from "@/lib/tasks/registry";
 
 interface OptimizeCandidate {
   /** Browser flow only: the picked File. */
@@ -62,6 +63,11 @@ export function OptimizeView() {
   const abortRef = useRef<AbortController | null>(null);
   /** Set when the user cancels a bulk run; checked between queue iterations. */
   const bulkCancelledRef = useRef(false);
+  /** Registry batch task id + counters for a bulk run (null for single-file encodes). */
+  const batchTaskRef = useRef<string | null>(null);
+  const batchDoneRef = useRef(0);
+  const batchTotalRef = useRef(0);
+  const batchFailedRef = useRef(0);
 
   const handleDirectory = useCallback(async () => {
     if (isTauri()) {
@@ -176,12 +182,37 @@ export function OptimizeView() {
     const candidate = candidates[index];
     if (!candidate) return;
 
+    let singleTaskId: string | null = null;
+    if (!bulk) {
+      singleTaskId = registerTask({
+        workbench: "optimize",
+        label: `Optimize · ${candidate.name}`,
+        stage: "Encoding…",
+        progress: 0,
+        cancel: () => abortRef.current?.abort(),
+      });
+    }
+    const activeTaskId = batchTaskRef.current ?? singleTaskId;
+
     abortRef.current?.abort();
     abortRef.current = new AbortController();
 
     const setItemProgress = (progress: number) => {
+      const clamped = Math.max(0, Math.min(100, progress));
+      if (activeTaskId) {
+        if (batchTaskRef.current) {
+          const total = batchTotalRef.current || 1;
+          const overall = Math.round(((batchDoneRef.current + clamped / 100) / total) * 100);
+          updateTask(activeTaskId, {
+            stage: `${batchDoneRef.current + 1} of ${total} · ${candidate.name}`,
+            progress: overall,
+          });
+        } else {
+          updateTask(activeTaskId, { progress: clamped, stage: `Encoding ${candidate.name}` });
+        }
+      }
       setCandidates((prev) =>
-        prev.map((c, i) => (i === index ? { ...c, progress: Math.max(0, Math.min(100, progress)) } : c)),
+        prev.map((c, i) => (i === index ? { ...c, progress: clamped } : c)),
       );
     };
 
@@ -283,6 +314,14 @@ export function OptimizeView() {
           onProgress: setItemProgress,
         });
         const encodedBytes = await (await import("@tauri-apps/plugin-fs")).readFile(outAbsPath);
+        if (batchTaskRef.current) {
+          batchDoneRef.current += 1;
+          updateTask(batchTaskRef.current, {
+            stage: `${batchDoneRef.current} of ${batchTotalRef.current} · done`,
+          });
+        } else if (singleTaskId) {
+          completeTask(singleTaskId);
+        }
         setCandidates((prev) =>
           prev.map((c, i) =>
             i === index
@@ -314,6 +353,14 @@ export function OptimizeView() {
           });
 
       const blob = new Blob([encoded.data as Uint8Array<ArrayBuffer>], { type: planOutputName.endsWith(".webm") ? "video/webm" : "video/mp4" });
+      if (batchTaskRef.current) {
+        batchDoneRef.current += 1;
+        updateTask(batchTaskRef.current, {
+          stage: `${batchDoneRef.current} of ${batchTotalRef.current} · done`,
+        });
+      } else if (singleTaskId) {
+        completeTask(singleTaskId);
+      }
       setCandidates((prev) =>
         prev.map((c, i) =>
           i === index
@@ -332,10 +379,21 @@ export function OptimizeView() {
             i === index ? { ...c, status: "skipped" as const, progress: undefined } : c,
           ),
         );
+        if (batchTaskRef.current) {
+          batchDoneRef.current += 1;
+        } else if (singleTaskId) {
+          cancelTask(singleTaskId);
+        }
         return;
       }
       const normalized = captureError(caught);
       const message = normalized.message;
+      if (batchTaskRef.current) {
+        batchFailedRef.current += 1;
+        batchDoneRef.current += 1;
+      } else if (singleTaskId) {
+        failTask(singleTaskId, message);
+      }
       diag.error('optimize', `candidate encode failed: ${normalized.message}`, {
         index,
         stack: normalized.stack,
@@ -352,6 +410,19 @@ export function OptimizeView() {
     bulkCancelledRef.current = false;
     setWorking(true);
     setError(null);
+    const pendingCountLocal = candidates.filter(
+      (c) => c.status === "pending" || c.status === "skipped" || c.status === "failed",
+    ).length;
+    batchDoneRef.current = 0;
+    batchFailedRef.current = 0;
+    batchTotalRef.current = pendingCountLocal;
+    batchTaskRef.current = registerTask({
+      workbench: "optimize",
+      label: "Optimize · batch",
+      stage: `0 of ${pendingCountLocal} · starting…`,
+      progress: 0,
+      cancel: () => cancelAll(),
+    });
     try {
       for (let i = 0; i < candidates.length; i += 1) {
         if (bulkCancelledRef.current) {
@@ -366,6 +437,13 @@ export function OptimizeView() {
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
     } finally {
+      const id = batchTaskRef.current;
+      batchTaskRef.current = null;
+      if (id) {
+        if (bulkCancelledRef.current) cancelTask(id);
+        else if (batchFailedRef.current > 0) failTask(id, `${batchFailedRef.current} file(s) failed`);
+        else completeTask(id);
+      }
       setWorking(false);
     }
   }, [candidates, optimizeOne]);
@@ -383,6 +461,13 @@ export function OptimizeView() {
 
   const downloadZip = useCallback(async () => {
     setZipping(true);
+    const zipTaskId = registerTask({
+      workbench: "optimize",
+      label: "Optimize · packaging zip",
+      stage: "Writing zip bundle…",
+      progress: null,
+      cancel: null,
+    });
     try {
       const zip = new JSZip();
       // Manifest of optimizations for the developer to reconcile
@@ -460,8 +545,10 @@ export function OptimizeView() {
       anchor.download = "pixel-press-optimized-bundle.zip";
       anchor.click();
       URL.revokeObjectURL(url);
+      completeTask(zipTaskId);
     } catch (caught) {
       const normalized = captureError(caught);
+      failTask(zipTaskId, normalized.message);
       diag.error('optimize', `zip creation failed: ${normalized.message}`, { stack: normalized.stack });
       setError(`Could not create zip: ${normalized.message}`);
     } finally {
