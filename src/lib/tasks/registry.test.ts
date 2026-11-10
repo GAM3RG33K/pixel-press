@@ -58,8 +58,8 @@ describe("task registry", () => {
     registerTask(base);
     off();
     registerTask(base);
-    expect(calls.length).toBe(2); // immediate subscribe call + first register; second register not notified
-    expect(calls[1]).toHaveLength(1);
+    expect(calls.length).toBe(1); // first register only; second register not notified
+    expect(calls[0]).toHaveLength(1);
   });
 
   it("emits a stable snapshot per change (new array each emit)", () => {

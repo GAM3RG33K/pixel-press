@@ -19,15 +19,19 @@ type Listener = (tasks: Task[]) => void;
 const tasks = new Map<string, Task>();
 const listeners = new Set<Listener>();
 const removalTimers = new Map<string, ReturnType<typeof setTimeout>>();
-let version = 0;
 let cachedSnapshot: Task[] = [];
 
 const LINGER_MS = 10_000;
 
 function emit(): void {
-  version += 1;
   cachedSnapshot = [...tasks.values()].sort((a, b) => a.startedAt - b.startedAt);
-  for (const fn of listeners) fn(cachedSnapshot);
+  for (const fn of listeners) {
+    try {
+      fn(cachedSnapshot);
+    } catch {
+      // A broken subscriber must not corrupt the store or block peers.
+    }
+  }
 }
 
 function scheduleRemoval(id: string): void {
@@ -75,13 +79,13 @@ export function failTask(id: string, error: string): void {
 
 export function cancelTask(id: string): void {
   const task = tasks.get(id);
-  if (task?.cancel) task.cancel();
+  if (task?.status === "running" && task.cancel) task.cancel();
   finishTask(id, "cancelled", null);
 }
 
 function finishTask(id: string, status: TaskStatus, error: string | null): void {
   const task = tasks.get(id);
-  if (!task) return;
+  if (!task || task.status !== "running") return;
   tasks.set(id, { ...task, status, error });
   scheduleRemoval(id);
   emit();
@@ -91,13 +95,8 @@ export function getTasks(): Task[] {
   return cachedSnapshot;
 }
 
-export function getVersion(): number {
-  return version;
-}
-
 export function subscribe(fn: Listener): () => void {
   listeners.add(fn);
-  fn(cachedSnapshot);
   return () => listeners.delete(fn);
 }
 
@@ -108,5 +107,4 @@ export function __clearForTests(): void {
   tasks.clear();
   listeners.clear();
   cachedSnapshot = [];
-  version = 0;
 }
