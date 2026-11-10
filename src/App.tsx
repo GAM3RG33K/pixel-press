@@ -14,6 +14,7 @@ import { CompareView } from "@/features/compare/CompareView";
 import { AuditView } from "@/features/audit/AuditView";
 import { OptimizeView } from "@/features/optimize/OptimizeView";
 import { DiagnosticsFab } from "@/features/diagnostics/DiagnosticsFab";
+import { TasksTray } from "@/components/tasks-tray";
 import { SetupScreen } from "@/features/setup/SetupScreen";
 import { isTauri, tauriApi } from "@/lib/tauri";
 import { diag } from "@/lib/diagnostics";
@@ -75,7 +76,16 @@ export default function App() {
   }, []);
 
   if (isTauri() && setupState === "missing") {
-    return <SetupScreen onReady={() => setSetupState("ready")} />;
+    return (
+      <>
+        <SetupScreen onReady={() => setSetupState("ready")} />
+        <TasksTray
+          onNavigate={() => {
+            /* navigation not available during setup; rows are non-jumpable (WORKBENCH_TAB[setup] === null) */
+          }}
+        />
+      </>
+    );
   }
 
   if (isTauri() && setupState === "checking") {
@@ -162,6 +172,7 @@ export default function App() {
       </main>
 
       <DiagnosticsFab />
+      <TasksTray onNavigate={(target) => setTab(target)} />
 
       <footer className="border-t border-border/60 px-6 py-6">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
