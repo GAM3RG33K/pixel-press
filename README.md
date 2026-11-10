@@ -33,7 +33,16 @@ git tag -a v0.1.0 -m "v0.1.0"
 git push origin v0.1.0
 ```
 
-You can also run a dry run from **Actions → Release → Run workflow**: it builds all five targets without creating a release or uploading anything. Use it to verify the pipeline before tagging.
+You can also run a dry run from **Actions → Release → Run workflow** (pick the flavor: `prod` or `dev`): it builds all five targets without creating a release or uploading anything. Use it to verify the pipeline before tagging.
+
+### Development flavor
+
+Tag with a `-dev` suffix to build the **"pixel-press Dev"** flavor — it installs as a separate app (`pixel-press Dev` / `com.pixelpress.app.dev`) **alongside** production, never overrides it, and the release is marked as a **prerelease**:
+
+```sh
+git tag -a v0.1.1-dev -m "v0.1.1-dev"
+git push origin v0.1.1-dev
+```
 
 ## How it works
 

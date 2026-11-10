@@ -4,16 +4,18 @@ name: Release
 # official Tauri v2 GitHub pipeline:
 #   https://v2.tauri.app/distribute/pipelines/github/
 #
-# Publishing: push a version tag; the workflow builds all targets and creates a
-# DRAFT GitHub Release with the bundles attached. Review it, publish from the
-# Releases page.
+# Flavors:
+#   - Production: tag v0.1.0 -> draft release ("pixel-press", com.pixelpress.app)
+#   - Development: tag v0.1.0-dev -> draft PRERELEASE ("pixel-press Dev", com.pixelpress.app.dev).
+#     The `*` in the tag pattern crosses `-`, so `v*.*.*` matches both. The dev build installs
+#     as a separate app alongside production and never overrides it.
+#   - Actions → Release → Run workflow (flavor: prod | dev) -> build-only dry run, no release.
 #
-#   git tag -a v0.1.0 -m "v0.1.0"
-#   git push origin v0.1.0
+#   git tag -a v0.1.0 -m "v0.1.0" && git push origin v0.1.0        # production
+#   git tag -a v0.1.0-dev -m "v0.1.0-dev" && git push origin v0.1.0-dev   # dev prerelease
 #
-# Dry run without a tag: Actions → Release → Run workflow. Builds all five
-# targets but creates NO release and uploads nothing — use it to verify the
-# pipeline on demand.
+# Dry run without a tag: Actions → Release → Run workflow (flavor: prod | dev).
+# Builds all five targets but creates NO release and uploads nothing.
 #
 # Platforms (docs/README "Targets"):
 #   - macOS Apple Silicon  (aarch64-apple-darwin)  .dmg
@@ -31,6 +33,15 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      flavor:
+        description: "Build flavor — dev installs as 'pixel-press Dev' (com.pixelpress.app.dev), side-by-side with production"
+        required: true
+        default: prod
+        type: choice
+        options:
+          - prod
+          - dev
 
 permissions:
   contents: write
@@ -90,6 +101,24 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      - name: Resolve flavor
+        id: flavor
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_FLAVOR: ${{ inputs.flavor }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            flavor="$DISPATCH_FLAVOR"
+          elif [[ "$REF_NAME" == *-dev* ]]; then
+            flavor=dev
+          else
+            flavor=prod
+          fi
+          echo "Resolved flavor: $flavor"
+          echo "flavor=$flavor" >> "$GITHUB_OUTPUT"
+
       - name: Build and publish
         uses: tauri-apps/tauri-action@v1
         env:
@@ -97,8 +126,10 @@ jobs:
         with:
           # Only a tag push publishes. On workflow_dispatch these are empty,
           # which tauri-action treats as "build only, upload nothing".
+          # *-dev* tags build the dev flavor as a DRAFT PRERELEASE named
+          # "pixel-press <tag> (Development)"; plain tags build production.
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          releaseName: ${{ github.ref_type == 'tag' && format('pixel-press {0}', github.ref_name) || '' }}
+          releaseName: ${{ steps.flavor.outputs.flavor == 'dev' && format('pixel-press {0} (Development)', github.ref_name) || (github.ref_type == 'tag' && format('pixel-press {0}', github.ref_name) || '') }}
           releaseDraft: true
           prerelease: ${{ github.ref_type == 'tag' && contains(github.ref_name, '-') }}
           releaseBody: |
@@ -119,4 +150,6 @@ jobs:
             `setup-manifest.json` lists SHA-256 + size + source for the FFmpeg/FFprobe/LLM artifacts downloaded on first launch.
 
             pixel-press is MIT-licensed. FFmpeg/FFprobe are separate GPL/LGPL binaries downloaded by you at first launch; LLM weights (SmolLM2-360M, Apache-2.0) likewise. See `THIRD_PARTY_NOTICES.md`.
-          args: ${{ matrix.args }}
+
+            > **Flavors:** tags containing `-dev` (e.g. `v0.1.0-dev`) produce the development flavor — **"pixel-press Dev"** (`com.pixelpress.app.dev`) — marked as a prerelease. It installs side-by-side with production and never overrides it. Plain tags produce the production build.
+          args: ${{ matrix.args }} ${{ steps.flavor.outputs.flavor == 'dev' && '--config src-tauri/tauri.dev.conf.json' || '' }}

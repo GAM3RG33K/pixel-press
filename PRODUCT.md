@@ -34,7 +34,7 @@ Local-first and fully local after first install — a native desktop app where F
 - Three workbenches for conversion: Compress (intent → plan → encode), Compare (same source, three quality anchors), Optimize (folder batch; single file → `name_optimized.ext` next to source, bulk → mirrored `pixel-pressed-<timestamp>/` folder).
 - Audit: local regex scan of HTML/JSX/TSX/Vue/Svelte/Astro for video-related issues; no network.
 - GPL/LGPL FFmpeg and Apache-2.0 LLM weights are first-run downloads, not bundled; notices ship (see THIRD_PARTY_NOTICES.md).
-- Platform targets (distribution): GitHub Releases on tag push (`v*.*.*`) — macOS Apple Silicon + Intel, Windows x64, Linux x64/ARM64. Windows ARM64 paused (native LLM backend does not link on MSVC ARM64).
+- Platform targets (distribution): GitHub Releases on tag push (`v*.*.*`) — macOS Apple Silicon + Intel, Windows x64, Linux x64/ARM64. `-dev`-suffixed tags ship the development flavor ("pixel-press Dev", `com.pixelpress.app.dev`) as a draft prerelease, installable alongside production. Windows ARM64 paused (native LLM backend does not link on MSVC ARM64).
 - No bundling of FFmpeg or LLM weights in the installer; installer stays ~15–30MB.
 - PWA milestone is frozen at tag `v0.0.0-pwa-milestone`; the Tauri line is the product.
 
