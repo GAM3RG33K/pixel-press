@@ -22,8 +22,9 @@
 # Expect ~25–40 minutes from tag push to the draft: all five legs run in
 # parallel inside the Release workflow.
 #
-# Dependencies: git, bash, coreutils. gh (optional) is used only to display
-# the latest GitHub release for reference; without it the wizard still works.
+# Dependencies: git, bash, coreutils only. No gh/3rd-party tooling —
+# releases are tracked purely via git tags; see the GitHub Releases page
+# for draft status.
 
 set -euo pipefail
 
@@ -128,28 +129,13 @@ next_free_dev() {
 
 # ── reference info ───────────────────────────────────────────────────────────
 show_reference() { # flavor latest_tag
-  local flavor="$1" latest="$2" line
+  local flavor="$1" latest="$2"
   if [[ -n "$latest" ]]; then
     info "latest git tag for this flavor:        ${GREEN}${latest}${RESET}"
   else
-    info "latest git tag for this flavor:        ${YELLOW}(none yet)${RESET}"
+    info "latest git tag for this flavor:        ${YELLOW}(none yet — this will be the first ${flavor} release)${RESET}"
   fi
-  if command -v gh >/dev/null 2>&1; then
-    if [[ "$flavor" == 'dev' ]]; then
-      line="$(gh release list --limit 15 --json tagName,isPrerelease,isDraft \
-                --template '{{range .}}{{if .isPrerelease}}{{.tagName}}{{"\t"}}{{if .isDraft}}draft{{end}}{{"\n"}}{{end}}{{end}}' 2>/dev/null | head -1)"
-    else
-      line="$(gh release list --limit 15 --json tagName,isPrerelease,isDraft \
-                --template '{{range .}}{{if not .isPrerelease}}{{.tagName}}{{"\t"}}{{if .isDraft}}draft{{end}}{{"\n"}}{{end}}{{end}}' 2>/dev/null | head -1)"
-    fi
-    if [[ -n "$line" ]]; then
-      info "latest GitHub release for this flavor: ${CYAN}$(printf '%s' "$line" | cut -f1)${RESET}$( [[ "$(printf '%s' "$line" | cut -f2)" == 'draft' ]] && printf ' %s(draft)%s' "$YELLOW" "$RESET" )"
-    else
-      info "latest GitHub release for this flavor: ${YELLOW}(none yet)${RESET}"
-    fi
-  else
-    info "latest GitHub release:                 ${YELLOW}(gh not found — showing git tags only)${RESET}"
-  fi
+  info "latest GitHub release for this flavor:  check the Releases page (drafts do not appear in gh/git)"
 }
 
 # ── flavor menu (sets FLAVOR) ───────────────────────────────────────────────
@@ -277,8 +263,8 @@ printf '               macOS arm64 + Intel (.dmg), Linux x64/ARM64 (.AppImage, .
 printf '               flavor args: %s\n'      "$WORKFLOW_ARGS"
 printf '  %sresult:%s    %s "%s" with all bundles attached\n' "$DIM" "$RESET" "$RELEASE_KIND" "$RELEASE_NAME"
 printf '  %sexpected:%s  ~25–40 minutes from tag push to the draft (all 5 legs run in parallel)\n' "$DIM" "$RESET"
-printf '  %swatch:%s     gh run list --workflow=Release --limit=1\n' "$DIM" "$RESET"
-printf '               gh run watch <run-id>\n'
+printf '  %swatch:%s     GitHub → Releases → the Actions run for this tag\n' "$DIM" "$RESET"
+printf '               or Releases page → your draft (once the run finishes)\n'
 printf '  %spublish:%s   %s\n'                "$DIM" "$RESET" "$PUBLISH_NOTE"
 hr
 
@@ -316,8 +302,8 @@ else
   printf '  2. Production bundles are attached to a %sDRAFT release%s named "%s".\n' "$BOLD" "$RESET" "$RELEASE_NAME"
 fi
 printf '  3. It will NOT go live by itself. When the draft is ready:\n'
-printf '       %sgh release list%s\n' "$CYAN" "$RESET"
+printf '       open the Releases page — your draft is listed there\n'
 printf '     review the assets on the Releases page, then "Publish release".\n'
-printf '     (or publish from the CLI: %sgh release publish %s%s)\n' "$CYAN" "$TAG" "$RESET"
+printf '     (publish with the "Publish release" button; production "latest" stays untouched until then)\n'
 printf '  4. If a leg fails, the draft is not created — fix and re-tag\n'
 printf '     (%sgit tag -d %s && git push origin :%s%s).\n' "$CYAN" "$TAG" "$TAG" "$RESET"
