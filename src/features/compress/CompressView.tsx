@@ -207,7 +207,11 @@ export function CompressView() {
       const encoded: OutputFile[] = [];
 
       for (const variant of variantsToEncode) {
-        if (abortRef.current.signal.aborted) return;
+        if (abortRef.current.signal.aborted) {
+          if (taskId) cancelTask(taskId);
+          setStatus("ready");
+          return;
+        }
         const outName =
           variant.container === "webm" ? `${base}-webm.webm` : `${base}-h264.mp4`;
         taskId = registerTask({
@@ -306,7 +310,10 @@ export function CompressView() {
       setOutputs(encoded);
       setStatus("done");
     } catch (caught) {
-      if (caught instanceof DOMException && caught.name === "AbortError") {
+      const aborted =
+        (caught instanceof DOMException && caught.name === "AbortError") ||
+        (caught instanceof Error && /abort/i.test(caught.message));
+      if (aborted) {
         diag.info('compress', 'encode aborted by user');
         if (taskId) cancelTask(taskId);
         setStatus("ready");
