@@ -2,7 +2,7 @@
 
 A **local-first, local-only** video compressor and project auditor available as a native desktop app. FFmpeg and the local LLM are installed on first launch via a tested download manager; nothing is uploaded anywhere — every byte is processed on your device.
 
-> Status: Tauri v2 desktop app on `main`; CI release pipeline live (5 shipping targets, tag-push triggered). PWA milestone preserved at `v0.0.0-pwa-milestone` on `main`.
+> Status: Tauri v2 desktop app on `main`; CI release pipeline live (4 shipping targets, tag-push triggered). PWA milestone preserved at `v0.0.0-pwa-milestone` on `main`.
 
 ## Why this overhaul now
 
@@ -18,15 +18,14 @@ Distribution format: GitHub Releases triggered by tag push (`v*.*.*`).
 | --- | --- | --- |
 | macOS | Apple Silicon (arm64) | `.dmg` |
 | macOS | Intel (x86_64) | `.dmg` |
-| Windows | x64 | `.msi` |
 | Linux | x86_64 | AppImage, `.deb` |
 | Linux | ARM64 | AppImage, `.deb` |
 
-> Windows ARM64 is currently not shipped: the native LLM backend (`llama-cpp-sys-4`) does not link on that toolchain yet. It will return once that is fixed.
+> Windows is currently not shipped: the last release run failed on the Windows leg. It will return once the build failure is diagnosed and fixed. Windows ARM64 likewise paused (native LLM backend does not link on MSVC ARM64).
 
 ## Releasing (maintainers)
 
-Push a version tag; the Release workflow builds all five targets and creates a **draft** GitHub Release with the bundles attached. Review it, then publish from the Releases page.
+Push a version tag; the Release workflow builds all four targets and creates a **draft** GitHub Release with the bundles attached. Review it, then publish from the Releases page.
 
 ```sh
 git tag -a v0.1.0 -m "v0.1.0"
@@ -39,7 +38,7 @@ Or run the interactive wizard — it asks for the flavor (dev default), shows th
 bun run release
 ```
 
-You can also run a dry run from **Actions → Release → Run workflow** (pick the flavor: `prod` or `dev`): it builds all five targets without creating a release or uploading anything. Use it to verify the pipeline before tagging.
+You can also run a dry run from **Actions → Release → Run workflow** (pick the flavor: `prod` or `dev`): it builds all four targets without creating a release or uploading anything. Use it to verify the pipeline before tagging.
 
 ### Development flavor
 

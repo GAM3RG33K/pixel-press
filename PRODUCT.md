@@ -34,7 +34,7 @@ Local-first and fully local after first install — a native desktop app where F
 - Three workbenches for conversion: Compress (intent → plan → encode), Compare (same source, three quality anchors), Optimize (folder batch; single file → `name_optimized.ext` next to source, bulk → mirrored `pixel-pressed-<timestamp>/` folder).
 - Audit: local regex scan of HTML/JSX/TSX/Vue/Svelte/Astro for video-related issues; no network.
 - GPL/LGPL FFmpeg and Apache-2.0 LLM weights are first-run downloads, not bundled; notices ship (see THIRD_PARTY_NOTICES.md).
-- Platform targets (distribution): GitHub Releases on tag push (`v*.*.*`) — macOS Apple Silicon + Intel, Windows x64, Linux x64/ARM64. `-dev`-suffixed tags ship the development flavor ("pixel-press Dev", `com.pixelpress.app.dev`) as a draft prerelease, installable alongside production. Windows ARM64 paused (native LLM backend does not link on MSVC ARM64).
+- Platform targets (distribution): GitHub Releases on tag push (`v*.*.*`) — macOS Apple Silicon + Intel, Linux x64/ARM64 (4 legs). `-dev`-suffixed tags ship the development flavor ("pixel-press Dev", `com.pixelpress.app.dev`) as a draft prerelease, installable alongside production. Windows not shipped (x64 release leg failing — excluded pending diagnosis; ARM64 paused: native LLM backend does not link on MSVC ARM64). macOS builds are ad-hoc signed (unsigned distribution — no Developer ID yet).
 - No bundling of FFmpeg or LLM weights in the installer; installer stays ~15–30MB.
 - PWA milestone is frozen at tag `v0.0.0-pwa-milestone`; the Tauri line is the product.
 
@@ -52,7 +52,7 @@ Local-first and fully local after first install — a native desktop app where F
 - Rule engine rules in `src/skills/compress-video-rules.ts`; LLM planner in `src-tauri/src/llm.rs`.
 - Test clips and a working sample pipeline (native ffprobe verification passes on this machine).
 - Docs/harness: `docs/harness/{decisions,open-questions,progress}.md`; brand assets in `docs/brand/`.
-- Absences: no testimonials, no user research data, no benchmarks published yet; no App Store presence; Windows/Linux builds untested this far in development.
+- Absences: no testimonials, no user research data, no benchmarks published yet; no App Store presence; Linux builds untested this far in development (first release run built macOS + Linux legs; Windows leg excluded).
 
 ## Product Principles
 

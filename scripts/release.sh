@@ -19,7 +19,7 @@
 #                      side-by-side with production, DRAFT PRERELEASE.
 #   prod  v0.1.0     -> "pixel-press" (com.pixelpress.app), DRAFT release.
 #
-# Expect ~25–40 minutes from tag push to the draft: all five legs run in
+# Expect ~25–40 minutes from tag push to the draft: all four legs run in
 # parallel inside the Release workflow.
 #
 # Dependencies: git, bash, coreutils only. No gh/3rd-party tooling —
@@ -258,8 +258,8 @@ printf '  %sflavor:%s    %s%s%s  →  %s\n'      "$DIM" "$RESET" "$BOLD" "$FLAVO
 printf '  %stag:%s       %s%s%s\n'            "$DIM" "$RESET" "$GREEN" "$TAG" "$RESET"
 [[ "$EXISTS" -eq 1 ]] && warn '  ⚠ tag already exists locally or on origin'
 printf '  %spoints at:%s %s  (%s)\n'          "$DIM" "$RESET" "$HEADSHA" "$BRANCH"
-printf '  %sworkflow:%s  Release (triggered by tag push) → builds 5 targets:\n' "$DIM" "$RESET"
-printf '               macOS arm64 + Intel (.dmg), Linux x64/ARM64 (.AppImage, .deb), Windows x64 (.msi)\n'
+printf '  %sworkflow:%s  Release (triggered by tag push) → builds 4 targets:\n' "$DIM" "$RESET"
+printf '               macOS arm64 + Intel (.dmg), Linux x64/ARM64 (.AppImage, .deb)\n'
 printf '               flavor args: %s\n'      "$WORKFLOW_ARGS"
 printf '  %sresult:%s    %s "%s" with all bundles attached\n' "$DIM" "$RESET" "$RELEASE_KIND" "$RELEASE_NAME"
 printf '  %sexpected:%s  ~25–40 minutes from tag push to the draft (all 5 legs run in parallel)\n' "$DIM" "$RESET"
@@ -294,7 +294,7 @@ fi
 
 printf '\n%s%sRelease workflow triggered.%s\n' "$GREEN" "$BOLD" "$RESET"
 printf 'What happens next:\n'
-printf '  1. GitHub Actions runs %sRelease%s on tag %s — five legs in parallel (~25–40 min total).\n' "$BOLD" "$RESET" "$TAG"
+printf '  1. GitHub Actions runs %sRelease%s on tag %s — four legs in parallel (~25–40 min total).\n' "$BOLD" "$RESET" "$TAG"
 if [[ "$FLAVOR" == 'dev' ]]; then
   printf '  2. %spixel-press Dev%s bundles are attached to a %sDRAFT PRERELEASE%s named "%s".\n' "$BOLD" "$RESET" "$BOLD" "$RESET" "$RELEASE_NAME"
   printf '     It installs as a separate app — your production install is not touched.\n'

@@ -15,18 +15,20 @@ name: Release
 #   git tag -a v0.1.0-dev -m "v0.1.0-dev" && git push origin v0.1.0-dev   # dev prerelease
 #
 # Dry run without a tag: Actions → Release → Run workflow (flavor: prod | dev).
-# Builds all five targets but creates NO release and uploads nothing.
+# Builds all four shipping targets but creates NO release and uploads nothing.
 #
 # Platforms (docs/README "Targets"):
 #   - macOS Apple Silicon  (aarch64-apple-darwin)  .dmg
 #   - macOS Intel          (x86_64-apple-darwin)   .dmg
 #   - Linux x64            (ubuntu-22.04)          .AppImage, .deb
 #   - Linux ARM64          (ubuntu-22.04-arm)      .AppImage, .deb
-#   - Windows x64          (windows-latest)        .msi
 #
-# Windows ARM64 is intentionally not built: llama-cpp-sys-4 (the native LLM
-# backend) does not link on that toolchain yet. Do not add it back without
-# verifying a full release build first.
+# Windows is intentionally not built: the last release run (v0.1.0-dev) failed on the
+# Windows leg and the build is excluded until the failure is understood and fixed.
+# Do not add it back without a green release run.
+# macOS builds are ad-hoc signed (tauri.conf.json > bundle > macOS > signingIdentity "-") —
+# this is required for Apple Silicon apps downloaded from the internet; without it they show
+# the "pixel-press Dev.app is damaged and can't be opened" dialog.
 
 on:
   push:
@@ -64,9 +66,6 @@ jobs:
           - name: Linux ARM64
             platform: ubuntu-22.04-arm
             args: --bundles appimage,deb
-          - name: Windows x64
-            platform: windows-latest
-            args: --bundles msi
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -137,13 +136,12 @@ jobs:
 
             First launch downloads FFmpeg/FFprobe and (optionally) a ~270 MB on-device LLM — SHA-256-verified, installed into your app data directory. The app then works fully offline. No accounts, no telemetry.
 
-            > Unsigned build — macOS Gatekeeper / Windows SmartScreen will warn. macOS: right-click → Open. Windows: More info → Run anyway.
+            > Ad-hoc signed for Apple Silicon (no Developer ID yet) — macOS Gatekeeper still blocks on first open: right-click → Open, or System Settings → Privacy & Security → Open Anyway.
 
             | Platform | Asset | Requirements |
             | --- | --- | --- |
             | macOS Apple Silicon | `*_aarch64.dmg` | macOS 11+ on Apple Silicon |
             | macOS Intel | `*_x64.dmg` | macOS 10.15+ on Intel |
-            | Windows x64 | `*_x64_en-US.msi` | Windows 10 1809+, WebView2 (built in on Win 11) |
             | Linux x64 | `*_amd64.AppImage` or `*_amd64.deb` | glibc ≥ 2.31, WebKitGTK 4.1 |
             | Linux ARM64 | `*_arm64.AppImage` or `*_arm64.deb` | Raspberry Pi OS / Ubuntu ARM64 |
 
