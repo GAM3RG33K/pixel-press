@@ -67,13 +67,13 @@ export function AuditView({ onSendToOptimize }: AuditViewProps) {
       setStatus("Scanning for video tags…");
       updateTask(taskId, { progress: 100, stage: "Scanning for video tags…" });
       const audit = await auditProjectFiles(results);
-      setReport(audit);
       if (signal.aborted) {
         cancelTask(taskId);
         setScanning(false);
         setStatus(null);
         return;
       }
+      setReport(audit);
       completeTask(taskId);
       setStatus(null);
     } catch (caught) {
