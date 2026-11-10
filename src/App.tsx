@@ -79,11 +79,7 @@ export default function App() {
     return (
       <>
         <SetupScreen onReady={() => setSetupState("ready")} />
-        <TasksTray
-          onNavigate={() => {
-            /* navigation not available during setup; rows are non-jumpable (WORKBENCH_TAB[setup] === null) */
-          }}
-        />
+        <TasksTray />
       </>
     );
   }

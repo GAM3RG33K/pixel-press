@@ -1,5 +1,5 @@
 // src/components/tasks-tray.tsx
-import { useState } from "react";
+import { useState, useReducer, useEffect } from "react";
 import { useSyncExternalStore } from "react";
 import {
   Loader2,
@@ -52,10 +52,10 @@ function Row({
   onJump,
 }: {
   task: Task;
-  onJump: (task: Task) => void;
+  onJump?: ((task: Task) => void) | undefined;
 }) {
   const Icon = WORKBENCH_ICON[task.workbench];
-  const jumpable = WORKBENCH_TAB[task.workbench] !== null;
+  const jumpable = WORKBENCH_TAB[task.workbench] !== null && !!onJump;
   const failed = task.status === "failed";
   const cancelled = task.status === "cancelled";
   const done = task.status === "completed";
@@ -76,10 +76,11 @@ function Row({
       />
       <button
         type="button"
-        onClick={() => jumpable && onJump(task)}
+        onClick={() => jumpable && onJump?.(task)}
         disabled={!jumpable}
         className="min-w-0 flex-1 text-left disabled:cursor-default"
         aria-label={jumpable ? `Go to ${task.workbench} workbench` : undefined}
+        title={jumpable ? "Switch to this pane" : undefined}
       >
         <span className="block truncate text-xs font-medium text-foreground">{task.label}</span>
         <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
@@ -115,9 +116,16 @@ function Row({
   );
 }
 
-export function TasksTray({ onNavigate }: { onNavigate: (tab: "compress" | "compare" | "optimize" | "audit") => void }) {
+export function TasksTray({ onNavigate }: { onNavigate?: (tab: "compress" | "compare" | "optimize" | "audit") => void }) {
   const tasks = useSyncExternalStore(subscribe, getTasks, getTasks);
   const [expanded, setExpanded] = useState(false);
+  const [, forceTick] = useReducer((c: number) => c + 1, 0);
+  useEffect(() => {
+    if (tasks.some((t) => t.status === "running")) {
+      const id = setInterval(() => forceTick(), 1000);
+      return () => clearInterval(id);
+    }
+  }, [tasks]);
 
   const active = tasks.filter((t) => t.status === "running");
   const visible = tasks.slice(0, 4);
@@ -127,15 +135,14 @@ export function TasksTray({ onNavigate }: { onNavigate: (tab: "compress" | "comp
 
   return (
     <div
-      role="status"
-      aria-live="polite"
       aria-label="Tasks in progress"
       className="fixed bottom-4 left-1/2 z-40 w-[min(420px,calc(100vw-2rem))] -translate-x-1/2"
     >
       {expanded ? (
-        <div className="overflow-hidden rounded-xl border border-border bg-card/95 shadow-lg backdrop-blur">
+        <div id="tasks-tray-panel" className="overflow-hidden rounded-xl border border-border bg-card/95 shadow-lg backdrop-blur">
           <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
             <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <span className="sr-only" aria-live="polite">{active.length} task(s) running</span>
               {active.length} {active.length === 1 ? "task" : "tasks"} running
             </span>
             <button
@@ -152,10 +159,10 @@ export function TasksTray({ onNavigate }: { onNavigate: (tab: "compress" | "comp
               <Row
                 key={task.id}
                 task={task}
-                onJump={(t) => {
+                onJump={onNavigate ? (t) => {
                   const tab = WORKBENCH_TAB[t.workbench];
                   if (tab) onNavigate(tab);
-                }}
+                } : undefined}
               />
             ))}
             {hidden > 0 ? (
@@ -170,11 +177,14 @@ export function TasksTray({ onNavigate }: { onNavigate: (tab: "compress" | "comp
           type="button"
           onClick={() => setExpanded((v) => !v)}
           className="flex w-full items-center justify-center gap-2 rounded-full border border-border bg-card/90 px-4 py-2.5 shadow-lg backdrop-blur transition-colors hover:border-primary/50"
-          aria-expanded={false}
+          aria-expanded={expanded}
+          aria-controls="tasks-tray-panel"
         >
           <Loader2 className="size-4 animate-spin text-primary" aria-hidden />
           <span className="text-xs font-medium">
-            {active.length} {active.length === 1 ? "task" : "tasks"} running
+            {active.length === 0
+              ? `${tasks.length} finished`
+              : `${active.length} ${active.length === 1 ? "task" : "tasks"} running`}
           </span>
           <ChevronUp className="size-4 text-muted-foreground" aria-hidden />
         </button>
