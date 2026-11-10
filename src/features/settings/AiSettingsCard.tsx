@@ -129,9 +129,9 @@ export function AiSettingsCard() {
       cancel: null,
     });
     try {
-      const result = await downloadModel('smollm2-360m', ({ progress }) => {
+      const result = await downloadModel('smollm2-360m', ({ progress, text }) => {
         setDownloadProgress(progress);
-        updateTask(taskId, { progress, stage: `Downloading model · ${progress}%` });
+        updateTask(taskId, { progress, stage: text ?? `Downloading model · ${progress}%` });
       });
       await refresh();
       if (result.ok) completeTask(taskId); else failTask(taskId, result.error ?? 'unknown error');
