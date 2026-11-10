@@ -13,6 +13,7 @@ import {
 import { isTauri, listLlmCandidates, downloadLlm, checkLlm, planWithNativeLlm, type LlmCandidate } from "@/lib/tauri";
 import { downloadModel, isModelCached, deleteModelFromCache } from "@/lib/ai/webllm";
 import { cn } from "@/lib/utils";
+import { registerTask, completeTask, failTask, updateTask } from "@/lib/tasks/registry";
 
 const PREF_OPTIONS: { id: AIMode; title: string; body: string; badge?: string }[] = [
   {
@@ -92,11 +93,20 @@ export function AiSettingsCard() {
       setIsDownloading(true);
       setStatus('Downloading model…');
       setDownloadProgress(0);
+      const taskId = registerTask({
+        workbench: "ai",
+        label: "Local AI · SmolLM2-360M",
+        stage: "Downloading model…",
+        progress: null,
+        cancel: null,
+      });
       try {
         await downloadLlm(llmSpec.id, { url: llmSpec.url, sha256: llmSpec.sha256 });
-        setStatus('Model cached and ready.');
         await refresh();
+        completeTask(taskId);
+        setStatus('Model cached and ready.');
       } catch (e) {
+        failTask(taskId, e instanceof Error ? e.message : String(e));
         setStatus(`Download failed: ${e instanceof Error ? e.message : String(e)}`);
         setIsDownloading(false);
         setDownloadProgress(null);
@@ -111,11 +121,20 @@ export function AiSettingsCard() {
     // Fallback: WebLLM path (web-only build)
     setIsDownloading(true);
     setStatus('Downloading model…');
+    const taskId = registerTask({
+      workbench: "ai",
+      label: "Local AI · WebLLM model",
+      stage: "Downloading model…",
+      progress: null,
+      cancel: null,
+    });
     try {
       const result = await downloadModel('smollm2-360m', ({ progress }) => {
         setDownloadProgress(progress);
+        updateTask(taskId, { progress, stage: `Downloading model · ${progress}%` });
       });
       await refresh();
+      if (result.ok) completeTask(taskId); else failTask(taskId, result.error ?? 'unknown error');
       setStatus(result.ok ? 'Model cached and ready.' : `Download failed: ${result.error ?? 'unknown error'}`);
     } finally {
       setIsDownloading(false);

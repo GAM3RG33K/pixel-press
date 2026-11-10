@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Download, Loader2, Terminal, RefreshCw } from "lucide-react";
 import type { FfmpegStatus } from "@/lib/tauri";
 import { isTauri, tauriApi } from "@/lib/tauri";
+import { registerTask, completeTask, failTask, updateTask } from "@/lib/tasks/registry";
 import { Button } from "@/components/ui/button";
 
 interface RequiredTool {
@@ -67,6 +68,13 @@ export function SetupScreen({ onReady }: SetupScreenProps) {
     setPhase("downloading");
     setError(null);
     let doneBytes = 0;
+    const taskId = registerTask({
+      workbench: "setup",
+      label: "Setup · ffmpeg & ffprobe",
+      stage: "Downloading tools…",
+      progress: null,
+      cancel: null,
+    });
     try {
       for (const tool of required) {
         const mod = await import("@tauri-apps/api/core");
@@ -77,18 +85,22 @@ export function SetupScreen({ onReady }: SetupScreenProps) {
           expectedSize: tool.expected_bytes,
         });
         doneBytes += tool.expected_bytes;
+        updateTask(taskId, { stage: `Downloading ${tool.id}…` });
         setProgress((p) => ({ ...p, [tool.id]: doneBytes }));
       }
       // Recheck
       const { ready } = await check();
       if (ready) {
+        completeTask(taskId);
         setPhase("ready");
         onReady();
       } else {
+        failTask(taskId, "Download finished but ffmpeg/ffprobe still not detected");
         setError("Download finished but ffmpeg/ffprobe still not detected — see system logs.");
         setPhase("failed");
       }
     } catch (e) {
+      failTask(taskId, e instanceof Error ? e.message : String(e));
       setError(e instanceof Error ? e.message : String(e));
       setPhase("failed");
     } finally {
