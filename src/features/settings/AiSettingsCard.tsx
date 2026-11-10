@@ -136,6 +136,9 @@ export function AiSettingsCard() {
       await refresh();
       if (result.ok) completeTask(taskId); else failTask(taskId, result.error ?? 'unknown error');
       setStatus(result.ok ? 'Model cached and ready.' : `Download failed: ${result.error ?? 'unknown error'}`);
+    } catch (e) {
+      failTask(taskId, e instanceof Error ? e.message : String(e));
+      setStatus(`Download failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsDownloading(false);
       setDownloadProgress(null);
