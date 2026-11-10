@@ -33,6 +33,12 @@ git tag -a v0.1.0 -m "v0.1.0"
 git push origin v0.1.0
 ```
 
+Or run the interactive wizard — it asks for the flavor (dev default), shows the latest tag/release for that flavor, suggests the next major/minor/patch versions, lets you edit the final tag string, and pushes the tag for you:
+
+```sh
+bun run release
+```
+
 You can also run a dry run from **Actions → Release → Run workflow** (pick the flavor: `prod` or `dev`): it builds all five targets without creating a release or uploading anything. Use it to verify the pipeline before tagging.
 
 ### Development flavor

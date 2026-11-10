@@ -14,7 +14,8 @@
     "icons": "bun scripts/generate-icons.mjs",
     "tauri": "bunx tauri",
     "tauri:dev": "cargo tauri dev",
-    "tauri:build": "cargo tauri build"
+    "tauri:build": "cargo tauri build",
+    "release": "bash scripts/release.sh"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",
