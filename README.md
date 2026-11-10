@@ -2,7 +2,7 @@
 
 A **local-first, local-only** video compressor and project auditor available as a native desktop app. FFmpeg and the local LLM are installed on first launch via a tested download manager; nothing is uploaded anywhere — every byte is processed on your device.
 
-> Status: Tauri v2 overhaul in progress on branch `feat/tauri-desktop`. PWA milestone tagged locally as `v0.0.0-pwa-milestone` on `main`.
+> Status: Tauri v2 desktop app on `main`; CI release pipeline live (5 shipping targets, tag-push triggered). PWA milestone preserved at `v0.0.0-pwa-milestone` on `main`.
 
 ## Why this overhaul now
 
@@ -33,7 +33,7 @@ git tag -a v0.1.0 -m "v0.1.0"
 git push origin v0.1.0
 ```
 
-Or run the interactive wizard — it asks for the flavor (dev default), shows the latest tag/release for that flavor, suggests the next major/minor/patch versions, lets you edit the final tag string, and pushes the tag for you:
+Or run the interactive wizard — it asks for the flavor (dev default), shows the latest tag for that flavor, suggests the next major/minor/patch versions, lets you edit the final tag string, and pushes the tag for you:
 
 ```sh
 bun run release
@@ -56,19 +56,19 @@ git push origin v0.1.1-dev
 2. The deterministic rule engine (default; always available) picks the codec/CRF. An optional local LLM (downloaded if you choose) does the same from your natural-language intent.
 3. Codec fallbacks H.264 ↔ H.265 swap with a loud notice when one is unavailable.
 4. Outputs:
-   - `video-h264.mp4` (Universal)
+   - `video-h264.mp4` (Universal H.264)
    - `video-vp9.webm` (WebM)
 5. Ready-to-drop `<video>` HTML and JSX snippets with `playsinline` / `muted` / `preload="metadata"`.
 
 ## Stack
 
-Tauri v2 (Rust) · React · Tailwind + shadcn/ui · `llama.cpp`-based LLM (framework TBD) · `bun` (web build)
+Tauri v2 (Rust) · React · Tailwind + shadcn/ui · native llama.cpp via `llama-cpp-4` (SmolLM2-360M, GGUF) · `bun` (web build)
 
 ## Install
 
 Download the release for your platform from GitHub Releases (`v*.*.*`). The installer is small (~15–30MB). On first launch, the app downloads ~80MB of system tools and ~210MB of LLM weights (or "Start in Rule Mode" to skip entirely).
 
-## Project layout (`feat/tauri-desktop` branch)
+## Project layout (`main`)
 
 ```
 src/                Frontend (React + TypeScript)

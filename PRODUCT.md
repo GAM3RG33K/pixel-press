@@ -48,7 +48,7 @@ Local-first and fully local after first install — a native desktop app where F
 
 ## Evidence on Hand
 
-- Working app on branch `feat/tauri-desktop` (Tauri v2 + React + Tailwind + shadcn/ui).
+- Working app on `main` (Tauri v2 + React + Tailwind + shadcn/ui); PWA milestone preserved at tag `v0.0.0-pwa-milestone`.
 - Rule engine rules in `src/skills/compress-video-rules.ts`; LLM planner in `src-tauri/src/llm.rs`.
 - Test clips and a working sample pipeline (native ffprobe verification passes on this machine).
 - Docs/harness: `docs/harness/{decisions,open-questions,progress}.md`; brand assets in `docs/brand/`.
