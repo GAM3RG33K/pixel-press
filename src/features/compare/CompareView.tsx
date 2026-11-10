@@ -17,6 +17,7 @@ import { StageCard, type StageProgressState } from "@/components/stage-card";
 import { useAiMode } from "@/lib/ai/use-ai-mode";
 import { resolvePlan } from "@/lib/ai/plan";
 import { diag, captureError } from "@/lib/diagnostics";
+import { registerTask, updateTask, completeTask, failTask, cancelTask } from "@/lib/tasks/registry";
 import { cn } from "@/lib/utils";
 
 interface CompareResult {
@@ -124,6 +125,7 @@ export function CompareView() {
     setVariantProgress([0, 0, 0]);
     setCurrentIndex(-1);
 
+    let taskId: string | null = null;
     try {
       const useNative = isNativeEngine();
       const service = useNative ? null : getFfmpegService();
@@ -138,16 +140,31 @@ export function CompareView() {
         { label: `H.264 · CRF ${Math.min(35, anchor)} · balanced`, crf: Math.min(35, anchor), codec: "h264" as const, container: "mp4" as const },
         { label: `VP9 · CRF ${Math.min(50, anchor + 8)} · smallest`, crf: Math.min(50, anchor + 8), codec: "vp9" as const, container: "webm" as const },
       ];
+      taskId = registerTask({
+        workbench: "compare",
+        label: "Compare · 3 variants",
+        stage: "Starting…",
+        progress: 0,
+        cancel: () => abortRef.current?.abort(),
+      });
+      const currentTaskId = taskId;
       void stripAudio;
 
       for (const [variantIndex, variant] of variants.entries()) {
-        if (abortRef.current.signal.aborted) return;
+        if (abortRef.current.signal.aborted) {
+          if (taskId) cancelTask(taskId);
+          return;
+        }
         setCurrentLabel(variant.label);
         setCurrentIndex(variantIndex);
         const outName = `${base}-${variant.codec}-${variant.crf}.${variant.container}`;
         const started = performance.now();
         const onProgress = (p: number) => {
           setVariantProgress((prev) => prev.map((v, i) => (i === variantIndex ? p : v)));
+          updateTask(currentTaskId, {
+            progress: Math.round(((variantIndex * 100 + p) / (variants.length * 100)) * 100),
+            stage: `Variant ${variantIndex + 1}/${variants.length} · ${variant.label}`,
+          });
         };
         let encoded: {
           data: Uint8Array;
@@ -206,11 +223,13 @@ export function CompareView() {
         });
       }
 
+      completeTask(currentTaskId);
       setResults(out);
       setStatus("done");
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") {
         diag.info('compare', 'encode aborted by user');
+        if (taskId) cancelTask(taskId);
         setStatus("ready");
         return;
       }
@@ -219,6 +238,7 @@ export function CompareView() {
         name: normalized.name,
         stack: normalized.stack,
       });
+      if (taskId) failTask(taskId, normalized.message);
       setError(normalized.message);
       setStatus("error");
     }
