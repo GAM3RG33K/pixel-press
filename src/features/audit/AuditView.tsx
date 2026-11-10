@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -14,6 +14,7 @@ import {
   type AuditReport,
 } from "@/lib/audit";
 import { diag, captureError } from "@/lib/diagnostics";
+import { registerTask, updateTask, completeTask, failTask, cancelTask } from "@/lib/tasks/registry";
 import { cn } from "@/lib/utils";
 
 interface ScannedFile {
@@ -29,27 +30,53 @@ export function AuditView({ onSendToOptimize }: AuditViewProps) {
   const [report, setReport] = useState<AuditReport | null>(null);
   const [scanning, setScanning] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const scanAbortRef = useRef<AbortController | null>(null);
 
   const scanFiles = useCallback(async (incoming: File[]) => {
+    const taskId = registerTask({
+      workbench: "audit",
+      label: "Audit · project scan",
+      stage: "Reading files…",
+      progress: 0,
+      cancel: () => scanAbortRef.current?.abort(),
+    });
+    scanAbortRef.current = new AbortController();
+    const signal = scanAbortRef.current.signal;
     setScanning(true);
     setStatus("Reading files…");
     try {
       const results: ScannedFile[] = [];
       for (const file of incoming) {
+        if (signal.aborted) {
+          cancelTask(taskId);
+          throw new DOMException("Aborted", "AbortError");
+        }
         // Only scan text-like sources
         if (/\.(png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|otf|pdf|zip|gz|mp4|webm|mov|mkv|avi)$/i.test(file.name)) {
           continue;
         }
         const text = await file.text().catch(() => "");
         results.push({ filePath: file.webkitRelativePath || file.name, contents: text });
+        updateTask(taskId, {
+          progress: Math.round(((results.length) / Math.max(1, incoming.length)) * 100),
+          stage: `Reading ${file.name}`,
+        });
       }
 
       setStatus("Scanning for video tags…");
+      updateTask(taskId, { progress: 100, stage: "Scanning for video tags…" });
       const audit = await auditProjectFiles(results);
       setReport(audit);
+      completeTask(taskId);
       setStatus(null);
     } catch (caught) {
+      if (caught instanceof DOMException && caught.name === "AbortError") {
+        setScanning(false);
+        setStatus(null);
+        return;
+      }
       const normalized = captureError(caught);
+      failTask(taskId, normalized.message);
       diag.error('audit', `scan failed: ${normalized.message}`, { stack: normalized.stack });
       setStatus(`Error: ${normalized.message}`);
     } finally {
