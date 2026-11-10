@@ -96,4 +96,13 @@ describe("task registry", () => {
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(getTasks().find((t) => t.id === id)?.status).toBe("cancelled");
   });
+
+  it("ignores updates for non-running tasks", () => {
+    const id = registerTask(base);
+    completeTask(id);
+    updateTask(id, { progress: 99, stage: "late" });
+    const task = getTasks().find((t) => t.id === id);
+    expect(task?.status).toBe("completed");
+    expect(task?.stage).not.toBe("late");
+  });
 });

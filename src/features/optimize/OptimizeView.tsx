@@ -183,7 +183,7 @@ export function OptimizeView() {
     if (!candidate) return;
 
     let singleTaskId: string | null = null;
-    if (!bulk) {
+    if (!bulk && !batchTaskRef.current) {
       singleTaskId = registerTask({
         workbench: "optimize",
         label: `Optimize · ${candidate.name}`,

@@ -64,7 +64,7 @@ export function registerTask(init: Omit<Task, "id" | "status" | "startedAt" | "e
 
 export function updateTask(id: string, patch: Partial<Pick<Task, "stage" | "progress" | "cancel" | "label">>): void {
   const task = tasks.get(id);
-  if (!task) return;
+  if (!task || task.status !== "running") return;
   tasks.set(id, { ...task, ...patch });
   emit();
 }
