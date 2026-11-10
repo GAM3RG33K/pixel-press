@@ -153,6 +153,8 @@ export function CompareView() {
       for (const [variantIndex, variant] of variants.entries()) {
         if (abortRef.current.signal.aborted) {
           if (taskId) cancelTask(taskId);
+          setCurrentIndex(-1);
+          setStatus("ready");
           return;
         }
         setCurrentLabel(variant.label);
