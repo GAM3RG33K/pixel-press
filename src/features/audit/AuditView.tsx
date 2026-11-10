@@ -33,15 +33,16 @@ export function AuditView({ onSendToOptimize }: AuditViewProps) {
   const scanAbortRef = useRef<AbortController | null>(null);
 
   const scanFiles = useCallback(async (incoming: File[]) => {
+    const abortController = new AbortController();
+    scanAbortRef.current = abortController;
+    const signal = abortController.signal;
     const taskId = registerTask({
       workbench: "audit",
       label: "Audit · project scan",
       stage: "Reading files…",
       progress: 0,
-      cancel: () => scanAbortRef.current?.abort(),
+      cancel: () => abortController.abort(),
     });
-    scanAbortRef.current = new AbortController();
-    const signal = scanAbortRef.current.signal;
     setScanning(true);
     setStatus("Reading files…");
     try {
@@ -67,6 +68,12 @@ export function AuditView({ onSendToOptimize }: AuditViewProps) {
       updateTask(taskId, { progress: 100, stage: "Scanning for video tags…" });
       const audit = await auditProjectFiles(results);
       setReport(audit);
+      if (signal.aborted) {
+        cancelTask(taskId);
+        setScanning(false);
+        setStatus(null);
+        return;
+      }
       completeTask(taskId);
       setStatus(null);
     } catch (caught) {
@@ -80,6 +87,7 @@ export function AuditView({ onSendToOptimize }: AuditViewProps) {
       diag.error('audit', `scan failed: ${normalized.message}`, { stack: normalized.stack });
       setStatus(`Error: ${normalized.message}`);
     } finally {
+      scanAbortRef.current = null;
       setScanning(false);
     }
   }, []);
