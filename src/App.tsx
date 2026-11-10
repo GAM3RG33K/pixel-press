@@ -133,12 +133,24 @@ export default function App() {
           </div>
         ) : null}
 
-        {/* Active workbench */}
+        {/* Workbenches — always mounted; inactive ones hidden so state survives tab switches */}
         <div className="mt-6">
-          {tab === "compress" ? <CompressView /> : null}
-          {tab === "compare" ? <CompareView /> : null}
-          {tab === "audit" ? <AuditView /> : null}
-          {tab === "optimize" ? <OptimizeView /> : null}
+          {([
+            { id: "compress", node: <CompressView /> },
+            { id: "compare", node: <CompareView /> },
+            { id: "audit", node: <AuditView /> },
+            { id: "optimize", node: <OptimizeView /> },
+          ] as const).map(({ id, node }) => (
+            <div
+              key={id}
+              hidden={tab !== id}
+              inert={tab !== id}
+              aria-hidden={tab !== id}
+              className={cn(tab !== id && "hidden")}
+            >
+              {node}
+            </div>
+          ))}
         </div>
 
         {/* Onboarding hint */}
