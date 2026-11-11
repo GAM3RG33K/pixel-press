@@ -51,7 +51,12 @@ git push origin v0.1.1-dev
 
 ## Updating
 
-The desktop app checks for updates from Settings → Updates (prod: latest prod release; dev flavor: dev prereleases only). When a newer release exists you can download the installer (.dmg/.AppImage/.msi) straight into ~/Downloads and install it manually — the app does not install over a running copy.
+The desktop app can update itself in place from **Settings → Updates** — same as most desktop apps: check, download, install, restart. The flavor determines which release channel it tracks:
+
+- **production** (`pixel-press`) → latest published production release on GitHub Releases.
+- **development** (`pixel-press Dev`) → newest dev build published to `gam3rgeek.github.io/pixel-press/dev-latest.json` (a static manifest re-published on every dev tag push; mirror of the dev prerelease's `latest.json`).
+
+No silent updates; you always see what will be installed, and you can install later.
 
 ## How it works
 
