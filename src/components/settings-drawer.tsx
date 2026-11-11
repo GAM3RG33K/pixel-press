@@ -66,7 +66,7 @@ export function SettingsDrawer() {
               </button>
             </div>
             <div className="flex flex-1 overflow-hidden">
-              <aside className="flex w-36 shrink-0 flex-col gap-1 border-r border-border/60 p-3">
+              <nav aria-label="Settings sections" className="flex w-36 shrink-0 flex-col gap-1 border-r border-border/60 p-3">
                 {SECTIONS.map(({ id, label }) => {
                   const Icon = id === "engine" ? Cpu : HardDrive;
                   const active = section === id;
@@ -87,7 +87,7 @@ export function SettingsDrawer() {
                     </button>
                   );
                 })}
-              </aside>
+              </nav>
               <div className="flex-1 overflow-y-auto px-4 pb-4 pt-4">
                 {section === "engine" ? (
                   <div className="space-y-4">
@@ -129,7 +129,14 @@ function CacheSection() {
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setClearing(false); }
   }, [load]);
-  if (error) return <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">{error}</p>;
+  if (error) {
+    return (
+      <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-[11px] text-destructive">
+        <p>{error}</p>
+        <button type="button" onClick={() => void load()} className="mt-2 underline underline-offset-2 hover:text-destructive">Try again</button>
+      </div>
+    );
+  }
   if (!stats) return <Loader2 className="size-5 animate-spin text-muted-foreground" aria-hidden />;
   return (
     <div className="rounded-xl border border-border bg-card/50 p-4 backdrop-blur">
