@@ -25,7 +25,7 @@ See `docs/harness/model-registry.md` for the model selection process.
 
 ## Rust crates (Tauri + plugins)
 
-- `tauri`, `tauri-plugin-fs`, `tauri-plugin-shell`, `tauri-plugin-dialog`, `tauri-plugin-updater` — MIT / Apache-2.0
+- `tauri`, `tauri-plugin-fs`, `tauri-plugin-shell`, `tauri-plugin-dialog` — MIT / Apache-2.0
 - `serde`, `serde_json`, `anyhow` — MIT / Apache-2.0
 - See `src-tauri/Cargo.lock` for the full list.
 

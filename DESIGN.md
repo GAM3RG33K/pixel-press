@@ -137,7 +137,7 @@ While the app still loads Inter, treat it as temporary scaffolding; new screens 
 - **Comfortable density**: 44px minimum interactive targets; generous padding; scroll only the queue/table regions, never the page chrome.
 - **Header**: brand left (mark + wordmark), status pill + Settings button (gear icon) right; tabs as a segmented row below.
 - **Tasks tray**: fixed bottom-center pill `z-40`, `backdrop-blur`; state visible only while ≥1 job is running. Collapsed: spinner + "N task(s) running" + chevron toggle; expanded: scrollable popover with icon + label + stage/% + elapsed + cancel. Click row → jump to the owning workbench.
-- **Settings drawer** (right side, `z-50`, 420px max): sidebar with Engine | Cache sections. Engine = diagnostics + Local AI card; Cache = live `$APPDATA/cache` usage, per-part breakdown, "Clear cache" with `window.confirm`.
+- **Settings drawer** (right side, `z-50`, 420px max): sidebar with Engine | Cache | Updates sections. Engine = diagnostics + Local AI card; Cache = live `$APPDATA/cache` usage, per-part breakdown, "Clear cache" with `window.confirm`; Updates = current version + flavor, check button, release notes + per-asset download (opens to `~/Downloads`).
 - **Marquee**: overflow-aware filename wrapper — duplicates content and cycles `translateX` only when it overflows; pauses on `:hover`/`:focus-within`; `prefers-reduced-motion` falls back to ellipsis; siblings never shrink (`min-w-0`).
 - Settings/utility screens follow the same card layout: one card per concern, label above control.
 

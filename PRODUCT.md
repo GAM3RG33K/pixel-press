@@ -37,6 +37,7 @@ Local-first and fully local after first install — a native desktop app where F
 - Audit: local regex scan of HTML/JSX/TSX/Vue/Svelte/Astro for video-related issues; no network.
 - Consolidated `$APPDATA/cache` for all staging/probe/encode temp artifacts; Settings drawer shows live usage with a clear button (ffmpeg tools and LLM weights untouched).
 - GPL/LGPL FFmpeg and Apache-2.0 LLM weights are first-run downloads, not bundled; notices ship (see THIRD_PARTY_NOTICES.md).
+- Built-in update check (Settings → Updates): compares the running version against the latest release for the app's flavor (dev builds see only dev prereleases; production builds see only published prod releases), lists per-asset download buttons, downloads the installer to `~/Downloads`, and asks the user to install manually — no silent overwrite.
 - Platform targets (distribution): GitHub Releases on tag push (`v*.*.*`) — macOS Apple Silicon + Intel, Linux x64/ARM64 (4 legs). `-dev`-suffixed tags ship the development flavor ("pixel-press Dev", `com.pixelpress.app.dev`) as a draft prerelease, installable alongside production. Windows not shipped (x64 release leg failing — excluded pending diagnosis; ARM64 paused: native LLM backend does not link on MSVC ARM64). macOS builds are ad-hoc signed (unsigned distribution — no Developer ID yet).
 - No bundling of FFmpeg or LLM weights in the installer; installer stays ~15–30MB.
 - PWA milestone is frozen at tag `v0.0.0-pwa-milestone`; the Tauri line is the product.

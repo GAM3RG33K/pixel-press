@@ -2,7 +2,7 @@
 
 A **local-first, local-only** video compressor and project auditor available as a native desktop app. FFmpeg and the local LLM are installed on first launch via a tested download manager; nothing is uploaded anywhere — every byte is processed on your device.
 
-> Status: Tauri v2 desktop app on `main`; CI release pipeline live (4 shipping targets, tag-push triggered). Recent additions: tasks-in-progress tray, huge-file smart probe, consolidated cache + Settings drawer. PWA milestone preserved at `v0.0.0-pwa-milestone` on `main`.
+> Status: Tauri v2 desktop app on `main`; CI release pipeline live (4 shipping targets, tag-push triggered). Recent additions: tasks-in-progress tray, huge-file smart probe, consolidated cache + Settings drawer (Engine | Cache | Updates), built-in update check. PWA milestone preserved at `v0.0.0-pwa-milestone` on `main`.
 
 ## Why this overhaul now
 
