@@ -6,7 +6,7 @@ name: Release
 #
 # Flavors:
 #   - Production: tag v0.1.0 -> draft release ("pixel-press", com.pixelpress.app)
-#   - Development: tag v0.1.0-dev -> draft PRERELEASE ("pixel-press Dev", com.pixelpress.app.dev).
+#   - Development: tag v0.1.0-dev -> prerelease ("pixel-press Dev", com.pixelpress.app.dev).
 #     The `*` in the tag pattern crosses `-`, so `v*.*.*` matches both. The dev build installs
 #     as a separate app alongside production and never overrides it.
 #   - Actions → Release → Run workflow (flavor: prod | dev) -> build-only dry run, no release.
@@ -125,7 +125,7 @@ jobs:
         with:
           # Only a tag push publishes. On workflow_dispatch these are empty,
           # which tauri-action treats as "build only, upload nothing".
-          # *-dev* tags build the dev flavor as a DRAFT PRERELEASE named
+          # *-dev* tags build the dev flavor as a PRERELEASE named
           # "pixel-press <tag> (Development)"; plain tags build production.
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: ${{ steps.flavor.outputs.flavor == 'dev' && format('pixel-press {0} (Development)', github.ref_name) || (github.ref_type == 'tag' && format('pixel-press {0}', github.ref_name) || '') }}

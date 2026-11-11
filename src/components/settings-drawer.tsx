@@ -202,7 +202,7 @@ function UpdatesSection() {
       setState(isUpdateAvailable(currentVersion, rel.tag) ? "available" : "up-to-date");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("no dev releases")) { setState("none"); } else { setError(msg); setState("error"); }
+      if (msg.includes("no dev releases") || msg.includes("no prod releases")) { setState("none"); } else { setError(msg); setState("error"); }
     }
   }, [flavor, currentVersion]);
 

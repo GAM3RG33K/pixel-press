@@ -523,6 +523,12 @@ async fn latest_release(flavor: &str) -> Result<LatestRelease, String> {
         .map_err(|e| format!("network ({e})"))?;
     let status = resp.status();
     if !status.is_success() {
+        if status.as_u16() == 404 && flavor == "prod" {
+            return Err("no prod releases published yet".into());
+        }
+        if status.as_u16() == 404 && flavor == "dev" {
+            return Err("no dev releases found".into());
+        }
         return Err(format!("network (status {})", status.as_u16()));
     }
     let value: serde_json::Value = resp.json().await.map_err(|_| "could not parse GitHub release".to_string())?;
@@ -550,8 +556,27 @@ fn sanitize_asset_name(name: &str) -> String {
         .to_string()
 }
 
+/// Tight allowlist for update downloads: HTTPS + GitHub asset hosts only.
+/// GitHub release asset URLs are either github.com/releases/download/... or
+/// objects.githubusercontent.com (302 target). Reject anything else.
+fn is_allowed_update_url(url: &str) -> bool {
+    fn h(u: &str) -> Option<&str> {
+        // crude but strict: require https://, no user:pass@, no path traversal games
+        let rest = u.strip_prefix("https://")?;
+        let host = rest.split(['/', ':', '?', '#']).next()?;
+        Some(host)
+    }
+    match h(url) {
+        Some(host) => host == "github.com" || host.ends_with(".github.com") || host.ends_with("githubusercontent.com"),
+        None => false,
+    }
+}
+
 #[tauri::command]
 async fn download_asset(app: tauri::AppHandle, url: String, asset_name: String) -> Result<String, String> {
+    if !is_allowed_update_url(&url) {
+        return Err("refused non-GitHub download url".into());
+    }
     let downloads = app
         .path()
         .download_dir()

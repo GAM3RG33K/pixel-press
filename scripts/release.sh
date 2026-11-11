@@ -16,7 +16,7 @@
 #
 # Flavors:
 #   dev   v0.1.0-dev -> "pixel-press Dev" (com.pixelpress.app.dev), installs
-#                      side-by-side with production, DRAFT PRERELEASE.
+#                      side-by-side with production, PRERELEASE.
 #   prod  v0.1.0     -> "pixel-press" (com.pixelpress.app), DRAFT release.
 #
 # Expect ~25–40 minutes from tag push to the draft: all four legs run in
@@ -141,7 +141,7 @@ show_reference() { # flavor latest_tag
 # ── flavor menu (sets FLAVOR) ───────────────────────────────────────────────
 ask_flavor() {
   printf '\nWhich flavor do you want to release?\n'
-  printf '  %s1%s) development (dev)  — pixel-press Dev, side-by-side with prod, DRAFT PRERELEASE  %s[default]%s\n' "$BOLD" "$RESET" "$DIM" "$RESET"
+  printf '  %s1%s) development (dev)  — pixel-press Dev, side-by-side with prod, PRERELEASE  %s[default]%s\n' "$BOLD" "$RESET" "$DIM" "$RESET"
   printf '  %s2%s) production (prod)  — pixel-press, DRAFT release\n' "$BOLD" "$RESET"
   local choice
   read -rp 'Select [1]: ' choice || choice=1
@@ -222,39 +222,10 @@ section "── Latest ${FLAVOR} release for reference ──"
 LATEST_FLAVOR="$(latest_tag "$FLAVOR")"
 show_reference "$FLAVOR" "$LATEST_FLAVOR"
 
-# ── version auto-bump (both flavors) ─────────────────────────────────────────
-# Bump the baked app version by one patch before tagging so release tags track
-# the version the app reports. Tags created here point at the bump commit.
+# Base the wizard on the CURRENT baked app version. The version bump happens
+# AFTER the user picks the tag (single commit carrying the chosen bump).
 CURRENT_VERSION=$(node -p "require('./package.json').version")
-NEW_VERSION=$(node -p "const p=require('./package.json').version.split('.').map(Number); p[2]=p[2]+1; p.join('.')")
-
-section '── Version bump ──────────────────────────────'
-printf '  %scurrent:%s    %s\n' "$DIM" "$RESET" "$CURRENT_VERSION"
-printf '  %snext:%s       %s  %s(auto-bumped — release tags track the baked app version)%s\n' "$DIM" "$RESET" "$NEW_VERSION" "$DIM" "$RESET"
-read -rp "Continue with version bump to $NEW_VERSION? [Y/n]: " CONTINUE || CONTINUE=Y
-case "$(printf '%s' "${CONTINUE:-y}" | tr '[:upper:]' '[:lower:]')" in y|yes) ;; *) warn 'Aborted — nothing bumped.'; exit 0 ;; esac
-
-python3 - <<PY
-import json
-for path in ['package.json', 'src-tauri/tauri.conf.json']:
-    with open(path) as f:
-        obj = json.load(f)
-    obj['version'] = '$NEW_VERSION'
-    with open(path, 'w') as f:
-        json.dump(obj, f, indent=2)
-        f.write('\n')
-PY
-
-git add package.json src-tauri/tauri.conf.json
-git commit -m "chore(release): bump version to $NEW_VERSION"
-ok "version bumped to $NEW_VERSION and committed"
-HEADSHA="$(git log --oneline -1)"
-BRANCH="$(git branch --show-current)"
-DIRTY=""
-
-# Base the wizard on the freshly bumped version — the patch suggestion defaults
-# to exactly it (see ask_bump's exact_patch argument).
-BASE_TAG="v${NEW_VERSION}"
+BASE_TAG="v${CURRENT_VERSION}"
 
 section '── Version ───────────────────────────────────'
 if [[ -n "$DIRTY" ]]; then
@@ -264,14 +235,37 @@ else
   info "Tag will point at HEAD (${HEADSHA}) on branch ${BRANCH}."
 fi
 
-ask_bump "$FLAVOR" "$BASE_TAG" "$NEW_VERSION"
+ask_bump "$FLAVOR" "$BASE_TAG"
 TAG="$CHOICE_TAG"
+
+# ── sync baked app version to the chosen tag (single commit) ─────────────────
+CHOSEN_BASE="${TAG#v}"; CHOSEN_BASE="${CHOSEN_BASE%%-*}"
+if [[ "$CHOSEN_BASE" != "$CURRENT_VERSION" ]]; then
+  section '── Version sync ─────────────────────────────────'
+  info "tag base ${CHOSEN_BASE}, package.json version ${CURRENT_VERSION} — syncing (one commit)"
+  python3 - <<PY
+import json
+for path in ['package.json', 'src-tauri/tauri.conf.json']:
+    with open(path) as f:
+        obj = json.load(f)
+    obj['version'] = '$CHOSEN_BASE'
+    with open(path, 'w') as f:
+        json.dump(obj, f, indent=2)
+        f.write('\n')
+PY
+  git add package.json src-tauri/tauri.conf.json
+  git commit -m "chore(release): bump version to $CHOSEN_BASE"
+  ok "version synced to $CHOSEN_BASE and committed"
+  HEADSHA="$(git log --oneline -1)"
+  BRANCH="$(git branch --show-current)"
+  DIRTY=""
+fi
 
 # ── final confirmation ───────────────────────────────────────────────────────
 if tag_exists "$TAG"; then EXISTS=1; else EXISTS=0; fi
 if [[ "$FLAVOR" == 'dev' ]]; then
   FLAVOR_BLURB='pixel-press Dev  (com.pixelpress.app.dev) — installs side-by-side with production'
-  RELEASE_KIND='DRAFT PRERELEASE'
+  RELEASE_KIND='PRERELEASE'
   RELEASE_NAME="pixel-press ${TAG} (Development)"
   PUBLISH_NOTE='draft + prerelease — review on the Releases page, then publish. Production "latest" is untouched.'
   WORKFLOW_ARGS='--config src-tauri/tauri.dev.conf.json'
@@ -292,7 +286,7 @@ printf '  %sworkflow:%s  Release (triggered by tag push) → builds 4 targets:\n
 printf '               macOS arm64 + Intel (.dmg), Linux x64/ARM64 (.AppImage, .deb)\n'
 printf '               flavor args: %s\n'      "$WORKFLOW_ARGS"
 printf '  %sresult:%s    %s "%s" with all bundles attached\n' "$DIM" "$RESET" "$RELEASE_KIND" "$RELEASE_NAME"
-printf '  %sexpected:%s  ~25–40 minutes from tag push to the draft (all 5 legs run in parallel)\n' "$DIM" "$RESET"
+printf '  %sexpected:%s  ~25–40 minutes from tag push to the draft (all four legs run in parallel)\n' "$DIM" "$RESET"
 printf '  %swatch:%s     GitHub → Releases → the Actions run for this tag\n' "$DIM" "$RESET"
 printf '               or Releases page → your draft (once the run finishes)\n'
 printf '  %spublish:%s   %s\n'                "$DIM" "$RESET" "$PUBLISH_NOTE"
@@ -326,7 +320,7 @@ printf '\n%s%sRelease workflow triggered.%s\n' "$GREEN" "$BOLD" "$RESET"
 printf 'What happens next:\n'
 printf '  1. GitHub Actions runs %sRelease%s on tag %s — four legs in parallel (~25–40 min total).\n' "$BOLD" "$RESET" "$TAG"
 if [[ "$FLAVOR" == 'dev' ]]; then
-  printf '  2. %spixel-press Dev%s bundles are attached to a %sDRAFT PRERELEASE%s named "%s".\n' "$BOLD" "$RESET" "$BOLD" "$RESET" "$RELEASE_NAME"
+  printf '  2. %spixel-press Dev%s bundles are attached to a %sPRERELEASE%s named "%s".\n' "$BOLD" "$RESET" "$BOLD" "$RESET" "$RELEASE_NAME"
   printf '     It installs as a separate app — your production install is not touched.\n'
 else
   printf '  2. Production bundles are attached to a %sDRAFT release%s named "%s".\n' "$BOLD" "$RESET" "$RELEASE_NAME"
