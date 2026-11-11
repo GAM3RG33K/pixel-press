@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
+  ArrowLeft,
   CheckCircle2,
+  ChevronDown,
   Clipboard,
   FileAudio,
   FileVideo,
@@ -57,7 +59,19 @@ interface OutputFile {
   container: "mp4" | "webm";
 }
 
-export function CompressView() {
+export function CompressView({
+  initialFile,
+  onBack,
+  intentSeed,
+  intentNonce = 0,
+}: {
+  /** Routed from the press home: drop 1 file → single flow, pre-loaded here. */
+  initialFile?: { file: File; path?: string; sizeBytes?: number } | null;
+  onBack?: () => void;
+  /** Plain-language goal picked on the home (applied to the intent bar). */
+  intentSeed?: string;
+  intentNonce?: number;
+} = {}) {
   const [file, setFile] = useState<File | null>(null);
   const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
   const [capabilities, setCapabilities] = useState<EncoderCapabilities | null>(null);
@@ -73,11 +87,28 @@ export function CompressView() {
   const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const [stageProgress, setStageProgress] = useState<import("@/components/stage-card").StageProgressState | null>(null);
+  /** Post-encode "Try 3 quality levels" trial (replaces the old Compare tab). */
+  const [showQualityTrials, setShowQualityTrials] = useState(false);
+  const [qualityTrials, setQualityTrials] = useState<{
+    status: "idle" | "running" | "done" | "error";
+    levels: { crf: number; bytes: number; fileName: string; blob: Blob }[];
+    error?: string;
+  }>({ status: "idle", levels: [] });
   /** Temp copy of the selected file, staged once per selection. */
   const stagedRef = useRef<NativeStagedInput | null>(null);
   /** Absolute source path when the file came from a native Tauri drop (never modified). */
   const sourcePathRef = useRef<string | null>(null);
   const sourceSizeRef = useRef<number | null>(null);
+
+  // Goal chip picked on the home → seed the intent bar.
+  const intentNonceRef = useRef(0);
+  useEffect(() => {
+    if (!intentSeed) return;
+    if (intentNonceRef.current === intentNonce) return;
+    intentNonceRef.current = intentNonce;
+    setIntentText(intentSeed);
+    setActivePresetId(null);
+  }, [intentSeed, intentNonce]);
 
   const currentPlan = useMemo(() => buildVariantPlan(intentText, metadata), [intentText, metadata]);
   const aiMode = useAiMode();
@@ -214,6 +245,14 @@ export function CompressView() {
       setStatus("error");
     }
   }, []);
+
+  // Route from the press home: pre-load the dropped file (re-arms per route).
+  const lastHandledFileRef = useRef<typeof initialFile>(null);
+  useEffect(() => {
+    if (!initialFile || lastHandledFileRef.current === initialFile) return;
+    lastHandledFileRef.current = initialFile;
+    void analyzeFile(initialFile.file, initialFile.path, initialFile.sizeBytes);
+  }, [initialFile, analyzeFile]);
 
   const encodeNow = useCallback(async () => {
     if (!file || !metadata) return;
@@ -405,17 +444,86 @@ export function CompressView() {
 
   const removeAudioPlanned = resolvedPlan.audioHandling === "strip";
 
+  const tryQualityLevels = useCallback(async () => {
+    if (!file || !metadata) return;
+    const base = resolvedPlan.crf;
+    const crfs = Array.from(new Set([Math.max(18, base - 6), base, Math.min(36, base + 6)]));
+    setQualityTrials({ status: "running", levels: [] });
+    const useNative = isNativeEngine();
+    const baseName = file.name.replace(/\.[^./]+$/, "") || "video";
+    const levels: { crf: number; bytes: number; fileName: string; blob: Blob }[] = [];
+    try {
+      for (const crf of crfs) {
+        if (abortRef.current?.signal.aborted) break;
+        const outName = `${baseName}-q${crf}.mp4`;
+        const codec = resolvedPlan.targetCodec === "h265" ? "h265" : "h264";
+        if (useNative) {
+          const staged = stagedRef.current;
+          const inputPath = sourcePathRef.current ?? staged?.tmpPath;
+          if (!inputPath) throw new Error("Source is no longer staged — re-drop the file.");
+          const outPath = staged ? nativeOutPath(staged, outName) : await nativeOutCachePath(outName);
+          await nativeEncodeFile({
+            inputPath,
+            outputPath: outPath,
+            codec,
+            crf,
+            stripAudio: resolvedPlan.audioHandling === "strip",
+            faststart: true,
+            durationSeconds: metadata.duration,
+            onProgress: () => undefined,
+            ...(abortRef.current?.signal ? { signal: abortRef.current.signal } : {}),
+          });
+          const bytes = await nativeReadAndRemove(outPath);
+          levels.push({ crf, bytes: bytes.byteLength, fileName: outName, blob: new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "video/mp4" }) });
+        } else {
+          const service = getFfmpegService();
+          const encoded = await service.encode({
+            input: file,
+            inputFileName: file.name,
+            outputFileName: outName,
+            codec,
+            crf,
+            stripAudio: resolvedPlan.audioHandling === "strip",
+            faststart: true,
+            durationSeconds: metadata.duration,
+            onProgress: () => undefined,
+            ...(abortRef.current?.signal ? { signal: abortRef.current.signal } : {}),
+          });
+          levels.push({ crf, bytes: encoded.data.byteLength, fileName: outName, blob: new Blob([encoded.data as Uint8Array<ArrayBuffer>], { type: "video/mp4" }) });
+        }
+      }
+      setQualityTrials({ status: "done", levels });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      diag.error("compress.quality", `quality trials failed: ${message}`);
+      setQualityTrials((prev) => ({ ...prev, status: "error", error: message }));
+    }
+  }, [file, metadata, resolvedPlan]);
+
+
   return (
     <section aria-labelledby="compress-view" className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="flex flex-col gap-4">
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="size-3.5" aria-hidden />
+            Back to the press
+          </button>
+        ) : null}
         <h2 id="compress-view" className="text-lg font-semibold tracking-tight">
           Smart Compress
         </h2>
-        <p className="text-sm text-muted-foreground">
-          Drop a video, tell us your goal in plain language, and the local rule
-          engine (or optional AI) will pick the right codec, CRF and handling —
-          then encode right here on this device.
-        </p>
+        {!file ? (
+          <p className="text-sm text-muted-foreground">
+            Drop a video, tell us your goal in plain language, and the local rule
+            engine (or optional AI) will pick the right codec, CRF and handling —
+            then encode right here on this device.
+          </p>
+        ) : null}
 
         {!file ? (
           <>
@@ -560,13 +668,30 @@ export function CompressView() {
           const inTotal = metadata ? metadata.fileSize * outputs.length : 0;
           const savedBytes = Math.max(0, inTotal - outTotal);
           const savedPct = inTotal > 0 ? Math.round((savedBytes / inTotal) * 100) : 0;
+          const inMb = inTotal / 1024 / 1024;
+          const outMb = outTotal / 1024 / 1024;
+          const barPct = inMb > 0 ? Math.max(2, Math.min(100, (outMb / inMb) * 100)) : 100;
           return (
-            <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-3 text-sm text-success" role="status">
-              <CheckCircle2 className="size-5 shrink-0" aria-hidden />
-              <p className="min-w-0">
-                <span className="font-semibold">Done.</span>{" "}
-                You saved ~{(savedBytes / 1024 / 1024).toFixed(1)} MB ({savedPct}% smaller than the source) across {outputs.length} output{outputs.length === 1 ? "" : "s"} — all encoded on this device.
+            <div className="press-paper press-field rounded-2xl px-6 py-6 text-center" role="status">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-success">
+                Pressed
               </p>
+              <p className="mt-2 text-[var(--text-hero)] font-semibold leading-none tracking-tighter text-foreground tabular-nums">
+                −{savedPct}
+                <span className="text-4xl align-top text-primary">%</span>
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {(savedBytes / 1024 / 1024).toFixed(1)} MB lighter · {outputs.length} output{outputs.length === 1 ? "" : "s"} · encoded on this device
+              </p>
+              <div className="mx-auto mt-4 max-w-md">
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <span>Before {inMb.toFixed(1)} MB</span>
+                  <span>After {outMb.toFixed(1)} MB</span>
+                </div>
+                <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-secondary">
+                  <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${barPct}%` }} />
+                </div>
+              </div>
             </div>
           );
         })() : null}
@@ -612,6 +737,85 @@ export function CompressView() {
               </Button>
             </div>
           </div>
+        ) : null}
+
+        {outputs.length > 0 ? (
+          <div className="overflow-hidden rounded-xl border border-border bg-card/50">
+            <button
+              type="button"
+              onClick={() => setShowQualityTrials((v) => !v)}
+              aria-expanded={showQualityTrials}
+              className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-accent/40"
+            >
+              Try 3 quality levels
+              <ChevronDown className={cn("size-4 transition-transform", showQualityTrials && "rotate-180")} aria-hidden />
+            </button>
+            {showQualityTrials ? (
+              <div className="border-t border-border/60 px-4 py-3">
+                <p className="text-xs text-muted-foreground">
+                  Re-encodes this source at three CRF levels around your plan (H.264) and shows the size trade-off. Pick the one that looks right — nothing uploads.
+                </p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="mt-2"
+                  onClick={() => void tryQualityLevels()}
+                  disabled={qualityTrials.status === "running"}
+                >
+                  {qualityTrials.status === "running" ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                  ) : (
+                    <Zap className="size-4" aria-hidden />
+                  )}
+                  {qualityTrials.status === "running" ? "Encoding 3 levels…" : "Encode 3 levels"}
+                </Button>
+                {qualityTrials.status === "error" ? (
+                  <p className="mt-2 text-xs text-destructive" role="alert">{qualityTrials.error}</p>
+                ) : null}
+                {qualityTrials.levels.length > 0 ? (
+                  <ul className="mt-3 divide-y divide-border/60 rounded-lg border border-border">
+                    {qualityTrials.levels.map((level, index) => {
+                      const pct = metadata && metadata.fileSize > 0
+                        ? Math.round((level.bytes / metadata.fileSize) * 100)
+                        : null;
+                      const isMiddle = index === Math.floor(qualityTrials.levels.length / 2);
+                      return (
+                        <li key={level.crf} className="flex items-center gap-3 px-3 py-2 text-xs">
+                          <span className="font-mono tabular-nums text-muted-foreground">CRF {level.crf}</span>
+                          <span className="min-w-0 flex-1 tabular-nums">
+                            {(level.bytes / 1024 / 1024).toFixed(1)} MB
+                            {pct !== null ? ` · ${pct}% of source` : ""}
+                            {isMiddle ? <span className="ml-2 rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">recommended</span> : null}
+                          </span>
+                          <Button size="sm" variant="ghost" onClick={() => download({ label: `CRF ${level.crf}`, fileName: level.fileName, sizeBytes: level.bytes, durationMs: 0, blob: level.blob, container: "mp4" })}>
+                            <ArrowDownToLine className="size-4" aria-hidden />
+                          </Button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {outputs.length > 0 ? (
+          <details className="rounded-xl border border-border bg-card/40 px-4 py-3 text-xs text-muted-foreground">
+            <summary className="cursor-pointer select-none text-sm font-medium text-foreground">
+              Technical details
+            </summary>
+            <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 font-mono text-[11px]">
+              <dt className="text-muted-foreground">plan</dt><dd>{resolvedPlanLabel}</dd>
+              <dt className="text-muted-foreground">codec</dt><dd>{resolvedPlan.targetCodec} · CRF {resolvedPlan.crf} · {resolvedPlan.twoPass ? "two-pass" : "single-pass"}</dd>
+              <dt className="text-muted-foreground">audio</dt><dd>{removeAudioPlanned ? "stripped" : (resolvedPlan.audioHandling ?? "copy")}</dd>
+              {metadata ? (
+                <>
+                  <dt className="text-muted-foreground">source</dt><dd>{metadata.width}×{metadata.height} · {metadata.duration.toFixed(2)}s · {metadata.videoCodec}{metadata.hasAudio ? " · audio" : ""}</dd>
+                </>
+              ) : null}
+            </dl>
+          </details>
         ) : null}
       </div>
 

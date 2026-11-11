@@ -140,7 +140,7 @@ export function TasksTray({ onNavigate }: { onNavigate?: (tab: "compress" | "com
       className="fixed bottom-4 left-1/2 z-40 w-[min(420px,calc(100vw-2rem))] -translate-x-1/2"
     >
       {expanded ? (
-        <div id="tasks-tray-panel" className="overflow-hidden rounded-xl border border-border bg-card/95 shadow-lg backdrop-blur">
+        <div id="tasks-tray-panel" className="overflow-hidden rounded-2xl border border-press-paper-edge bg-press-paper shadow-[0_8px_32px_oklch(0_0_0/0.45)]">
           <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
             <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               <span className="sr-only" aria-live="polite">{active.length} task(s) running</span>
@@ -177,7 +177,7 @@ export function TasksTray({ onNavigate }: { onNavigate?: (tab: "compress" | "com
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="flex w-full items-center justify-center gap-2 rounded-full border border-border bg-card/90 px-4 py-2.5 shadow-lg backdrop-blur transition-colors hover:border-primary/50"
+          className="flex w-full items-center justify-center gap-2 rounded-full border border-press-paper-edge bg-press-paper px-4 py-2.5 shadow-[0_8px_32px_oklch(0_0_0/0.45)] transition-colors hover:border-primary/60"
           aria-expanded={expanded}
           aria-controls="tasks-tray-panel"
         >

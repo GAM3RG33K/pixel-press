@@ -1,37 +1,31 @@
 import { useState } from "react";
 import { useEffect } from "react";
-import {
-  ArrowDownToLine,
-  BarChart3,
-  FolderOpen,
-  ShieldCheck,
-  Zap,
-} from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
 import { Header } from "@/components/header";
 import { CompressView } from "@/features/compress/CompressView";
-import { CompareView } from "@/features/compare/CompareView";
-import { AuditView } from "@/features/audit/AuditView";
 import { OptimizeView } from "@/features/optimize/OptimizeView";
 import { DiagnosticsFab } from "@/features/diagnostics/DiagnosticsFab";
 import { TasksTray } from "@/components/tasks-tray";
 import { SetupScreen } from "@/features/setup/SetupScreen";
+import { PressHome, GOALS, type GoalId } from "@/components/PressHome";
+import type { PressRoute } from "@/components/PressDropZone";
 import { isTauri, tauriApi } from "@/lib/tauri";
 import { diag } from "@/lib/diagnostics";
+import { fetchSampleClip } from "@/lib/sample";
 import { cn } from "@/lib/utils";
 
-type TabId = "compress" | "compare" | "audit" | "optimize";
-
-const TABS: { id: TabId; label: string; icon: typeof Zap; description: string }[] = [
-  { id: "compress", label: "Compress", icon: Zap, description: "One click: drop a video, pick intent, get optimized files" },
-  { id: "compare", label: "Compare", icon: BarChart3, description: "Encode the same clip 3 ways, pick size vs quality" },
-  { id: "audit", label: "Audit", icon: ShieldCheck, description: "Find every video tag and its issues in your project" },
-  { id: "optimize", label: "Optimize", icon: FolderOpen, description: "Batch encode videos, download a drop-in zip bundle" },
-];
+type Flow = "home" | "single" | "folder";
 
 export default function App() {
-  const [tab, setTab] = useState<TabId>("compress");
+  const [flow, setFlow] = useState<Flow>("home");
   const [setupState, setSetupState] = useState<"checking" | "ready" | "missing">("checking");
+  const [goal, setGoal] = useState<GoalId | null>(null);
+  /** Routed payloads — identity changes re-arm the flows. */
+  const [singleRoute, setSingleRoute] = useState<{ file: File; path?: string; sizeBytes?: number } | null>(null);
+  const [folderRoute, setFolderRoute] = useState<{ files?: File[]; tauriPath?: string; tauriPaths?: string[] } | null>(null);
+  const [routeNonce, setRouteNonce] = useState(0);
+  const [sampleRequested, setSampleRequested] = useState(false);
 
   useEffect(() => {
     // Avoid the React StrictMode dev double-mount logging twice
@@ -75,6 +69,41 @@ export default function App() {
     });
   }, []);
 
+  const route = (next: PressRoute) => {
+    setRouteNonce((n) => n + 1);
+    if (next.kind === "single") {
+      setSingleRoute({ file: next.file, ...(next.path !== undefined ? { path: next.path } : {}), ...(next.sizeBytes !== undefined ? { sizeBytes: next.sizeBytes } : {}) });
+      setFlow("single");
+      return;
+    }
+    setFolderRoute({
+      ...(next.files.length > 0 ? { files: next.files } : {}),
+      ...(next.tauriPath !== undefined ? { tauriPath: next.tauriPath } : {}),
+      ...(next.tauriPaths !== undefined ? { tauriPaths: next.tauriPaths } : {}),
+    });
+    setFlow("folder");
+  };
+
+  // Home → sample clip: enter the single-file flow and kick the sample fetch there.
+  useEffect(() => {
+    if (!sampleRequested) return;
+    setSampleRequested(false);
+    fetchSampleClip()
+      .then((sample) => {
+        setRouteNonce((n) => n + 1);
+        setSingleRoute({ file: sample });
+        setFlow("single");
+      })
+      .catch((error: unknown) => {
+        diag.error('app', 'sample fetch failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        setFlow("single");
+      });
+  }, [sampleRequested]);
+
+  const selectedGoal = GOALS.find((g) => g.id === goal) ?? null;
+
   if (isTauri() && setupState === "missing") {
     return (
       <>
@@ -94,81 +123,39 @@ export default function App() {
 
   return (
     <div className="min-h-dvh">
-      <Header />
+      <Header onNavigate={setFlow} />
 
-      <main className="mx-auto w-full max-w-6xl px-4 pb-24 pt-8 sm:px-6">
-        {/* Tab strip */}
-        <nav
-          aria-label="Workbenches"
-          className="flex flex-wrap gap-2 rounded-xl border border-border bg-card/40 p-1.5 backdrop-blur"
-        >
-          {TABS.map(({ id, label, icon: Icon, description }) => {
-            const active = tab === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setTab(id)}
-                aria-pressed={active}
-                aria-label={`${label} — ${description}`}
-                className={cn(
-                  "group inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all",
-                  active
-                    ? "bg-primary text-primary-foreground shadow"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon className="size-4" aria-hidden />
-                <span>{label}</span>
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Hero / slim intro — only on Compress; the tool is the hero */}
-        {tab === "compress" ? (
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-[11px] text-muted-foreground backdrop-blur">
-              <Zap className="size-3.5 text-primary" aria-hidden />
-              Local-first · No uploads · No telemetry
-            </span>
-            <p className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
-              Ship smaller video,{" "}
-              <span className="text-primary">straight from your own machine</span>.
-            </p>
-          </div>
-        ) : null}
-
-        {/* Workbenches — always mounted; inactive ones hidden so state survives tab switches */}
-        <div className="mt-6">
-          {([
-            { id: "compress", node: <CompressView /> },
-            { id: "compare", node: <CompareView /> },
-            { id: "audit", node: <AuditView /> },
-            { id: "optimize", node: <OptimizeView /> },
-          ] as const).map(({ id, node }) => (
-            <div
-              key={id}
-              hidden={tab !== id}
-              inert={tab !== id}
-              aria-hidden={tab !== id}
-              className={cn(tab !== id && "hidden")}
-            >
-              {node}
-            </div>
-          ))}
+      <main className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6 sm:px-6">
+        {/* Home — the unified drop surface */}
+        <div hidden={flow !== "home"} inert={flow !== "home"} aria-hidden={flow !== "home"} className={cn(flow !== "home" && "hidden")}>
+          <PressHome
+            selectedGoal={goal}
+            onGoalChange={setGoal}
+            onRoute={route}
+            onTrySample={() => setSampleRequested(true)}
+          />
         </div>
 
-        {/* Onboarding hint */}
-        <div className="mt-8 rounded-xl border border-border bg-card/40 px-4 py-3 text-xs text-muted-foreground backdrop-blur">
-          <ArrowDownToLine className="mr-1 inline size-3.5 text-primary" aria-hidden />
-          All processing happens on your device. Output size and savings estimates appear on encode completion. Nothing you drop ever leaves this tab.
+        {/* Flows — always mounted (keep-alive), hidden when inactive */}
+        <div hidden={flow !== "single"} inert={flow !== "single"} aria-hidden={flow !== "single"} className={cn(flow !== "single" && "hidden", "pt-2")}>
+          <CompressView
+            initialFile={singleRoute}
+            onBack={() => setFlow("home")}
+            {...(selectedGoal ? { intentSeed: selectedGoal.intent } : {})}
+            intentNonce={routeNonce}
+          />
         </div>
-
+        <div hidden={flow !== "folder"} inert={flow !== "folder"} aria-hidden={flow !== "folder"} className={cn(flow !== "folder" && "hidden", "pt-2")}>
+          <OptimizeView
+            initialFolder={folderRoute}
+            folderNonce={routeNonce}
+            onBack={() => setFlow("home")}
+          />
+        </div>
       </main>
 
       <DiagnosticsFab />
-      <TasksTray onNavigate={(target) => setTab(target)} />
+      <TasksTray onNavigate={() => setFlow("home")} />
 
       <footer className="border-t border-border/60 px-6 py-6">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">

@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import {
   ArrowDownToLine,
-  FileCode2,
+  ArrowLeft,
   FileVideo,
   Loader2,
+  ScanSearch,
   Square,
   Trash2,
   Zap,
@@ -20,8 +21,8 @@ import { resolvePlan } from "@/lib/ai/plan";
 import { diag, captureError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
 import { Marquee } from "@/components/marquee";
-import { buildVideoSnippet } from "@/lib/snippet";
 import { registerTask, updateTask, completeTask, failTask, cancelTask } from "@/lib/tasks/registry";
+import { estimateSizeBytes } from "@/lib/workflow";
 
 interface OptimizeCandidate {
   /** Browser flow only: the picked File. */
@@ -50,8 +51,18 @@ interface OptimizeCandidate {
   error?: string | undefined;
 }
 
-export function OptimizeView() {
+export function OptimizeView({
+  onBack,
+  initialFolder,
+  folderNonce = 0,
+}: {
+  onBack?: () => void;
+  /** Routed from the press home: the dropped folder or loose files. */
+  initialFolder?: { files?: File[]; tauriPath?: string; tauriPaths?: string[] } | null;
+  folderNonce?: number;
+} = {}) {
   const [candidates, setCandidates] = useState<OptimizeCandidate[]>([]);
+  const [checkUp, setCheckUp] = useState<"idle" | "running" | "done">("idle");
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [zipping, setZipping] = useState(false);
@@ -70,40 +81,96 @@ export function OptimizeView() {
   const batchTotalRef = useRef(0);
   const batchFailedRef = useRef(0);
 
+  const loadFromPath = useCallback(async (dir: string) => {
+    if (!isTauri()) return;
+    pickedDirRef.current = dir;
+    setPickedDir(dir);
+    outputRootRef.current = null;
+    setOutputRoot(null);
+
+    const entries = await tauriApi.fsReadDir(dir);
+    const sep = dir.includes(String.fromCharCode(92)) ? String.fromCharCode(92) : "/";
+    const normDir = dir.endsWith(sep) ? dir : dir + sep;
+    const videos = entries.filter(
+      (entry) => entry.kind === "file" && /\.(mp4|webm|mov|mkv|avi)$/i.test(entry.path),
+    );
+    const built: OptimizeCandidate[] = videos.map((entry) => {
+      const rel = entry.path.startsWith(normDir) ? entry.path.slice(normDir.length) : entry.path;
+      const name = entry.path.split(/[/\\]/).pop() ?? entry.path;
+      return {
+        filePath: rel,
+        relPath: rel,
+        absolutePath: entry.path,
+        size: entry.size,
+        name,
+        tagIndex: 0,
+        line: 1,
+        sourceFilePath: "local asset",
+        kind: "video" as const,
+        status: "pending" as const,
+      };
+    });
+    bulkCancelledRef.current = false;
+    setCheckUp("idle");
+    setCandidates(built);
+  }, []);
+
+  const loadFromPaths = useCallback(async (paths: string[]) => {
+    const built: OptimizeCandidate[] = [];
+    for (const p of paths) {
+      const name = p.split(/[/\\]/).pop() ?? p;
+      let size = 0;
+      try {
+        const stat = await (await import("@tauri-apps/plugin-fs")).stat?.(p);
+        size = Number(stat?.size ?? 0);
+      } catch {
+        size = 0;
+      }
+      built.push({
+        filePath: name,
+        relPath: name,
+        absolutePath: p,
+        size,
+        name,
+        tagIndex: 0,
+        line: 1,
+        sourceFilePath: "local asset",
+        kind: "video" as const,
+        status: "pending" as const,
+      });
+    }
+    bulkCancelledRef.current = false;
+    setCheckUp("idle");
+    setCandidates(built);
+  }, []);
+
+  // Route from the press home: dropped folder / loose files load once per route.
+  const lastFolderNonceRef = useRef(0);
+  useEffect(() => {
+    if (!initialFolder || lastFolderNonceRef.current === folderNonce) return;
+    lastFolderNonceRef.current = folderNonce;
+    if (initialFolder.tauriPath) {
+      loadFromPath(initialFolder.tauriPath).catch((caught: unknown) => {
+        const normalized = captureError(caught);
+        diag.error('optimize', `native directory scan failed: ${normalized.message}`, { stack: normalized.stack });
+        setError(`Could not scan folder: ${normalized.message}`);
+      });
+      return;
+    }
+    if (initialFolder.tauriPaths?.length) {
+      void loadFromPaths(initialFolder.tauriPaths);
+      return;
+    }
+    if (initialFolder.files?.length) collectCandidates(initialFolder.files);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFolder, folderNonce, loadFromPath, loadFromPaths]);
+
   const handleDirectory = useCallback(async () => {
     if (isTauri()) {
       try {
         const dir = await tauriApi.pickFolder();
         if (!dir) return;
-        pickedDirRef.current = dir;
-        setPickedDir(dir);
-        outputRootRef.current = null;
-        setOutputRoot(null);
-
-        const entries = await tauriApi.fsReadDir(dir);
-        const sep = dir.includes(String.fromCharCode(92)) ? String.fromCharCode(92) : "/";
-        const normDir = dir.endsWith(sep) ? dir : dir + sep;
-        const videos = entries.filter(
-          (entry) => entry.kind === "file" && /\.(mp4|webm|mov|mkv|avi)$/i.test(entry.path),
-        );
-        const built: OptimizeCandidate[] = videos.map((entry) => {
-          const rel = entry.path.startsWith(normDir) ? entry.path.slice(normDir.length) : entry.path;
-          const name = entry.path.split(/[/\\]/).pop() ?? entry.path;
-          return {
-            filePath: rel,
-            relPath: rel,
-            absolutePath: entry.path,
-            size: entry.size,
-            name,
-            tagIndex: 0,
-            line: 1,
-            sourceFilePath: "local asset",
-            kind: "video" as const,
-            status: "pending" as const,
-          };
-        });
-        bulkCancelledRef.current = false;
-        setCandidates(built);
+        await loadFromPath(dir);
         return;
       } catch (caught) {
         const normalized = captureError(caught);
@@ -176,8 +243,45 @@ export function OptimizeView() {
     }
 
     bulkCancelledRef.current = false;
+    setCheckUp("idle");
     setCandidates(candidates);
   }, []);
+
+  /** Folder Check-Up: probe every candidate so rows can show codec/res/bitrate and an estimated saving. */
+  const runCheckUp = useCallback(async () => {
+    setCheckUp("running");
+    for (let i = 0; i < candidates.length; i += 1) {
+      const candidate = candidates[i];
+      if (!candidate || candidate.metadata) continue;
+      try {
+        let metadata: VideoMetadata | null = null;
+        if (candidate.absolutePath && isTauri()) {
+          const raw = await tauriApi.ffprobeJson(candidate.absolutePath);
+          metadata = parseFfprobeJson(raw, candidate.name, candidate.size);
+        } else if (candidate.file) {
+          if (isNativeEngine()) {
+            const probe = await nativeProbe(candidate.file, candidate.name);
+            metadata = probe.metadata;
+          } else {
+            const probe = await getFfmpegService().probe({ input: candidate.file, fileName: candidate.name });
+            metadata = probe.metadata;
+          }
+        }
+        const found = metadata;
+        if (found) {
+          setCandidates((prev) =>
+            prev.map((c, idx) => (idx === i ? { ...c, metadata: found } : c)),
+          );
+        }
+      } catch (caught) {
+        diag.warn("optimize.checkup", "probe failed for candidate", {
+          index: i,
+          error: caught instanceof Error ? caught.message : String(caught),
+        });
+      }
+    }
+    setCheckUp("done");
+  }, [candidates]);
 
   const optimizeOne = useCallback(async (index: number, bulk: boolean = false): Promise<void> => {
     const candidate = candidates[index];
@@ -502,43 +606,6 @@ export function OptimizeView() {
         ].join("\n"),
       );
 
-      const snippet = buildVideoSnippet(
-        candidates
-          .filter((c): c is OptimizeCandidate & { outputFileName: string; outputBlob: Blob } =>
-            Boolean(c.outputFileName && c.outputBlob),
-          )
-          .map((c) => ({
-            fileName: c.outputFileName,
-            path: `./${c.outputFileName}`,
-            container: "mp4",
-            sizeBytes: c.outputBlob.size,
-          })),
-        {
-          autoplay: true,
-          loop: true,
-          preload: "metadata",
-        },
-      );
-      zip.file("video-snippet.html", snippet);
-      zip.file("video-snippet.jsx", buildVideoSnippet(
-        candidates
-          .filter((c): c is OptimizeCandidate & { outputFileName: string; outputBlob: Blob } =>
-            Boolean(c.outputFileName && c.outputBlob),
-          )
-          .map((c) => ({
-            fileName: c.outputFileName,
-            path: `./${c.outputFileName}`,
-            container: "mp4",
-            sizeBytes: c.outputBlob.size,
-          })),
-        {
-          autoplay: true,
-          loop: true,
-          preload: "metadata",
-          withJsx: true,
-        },
-      ));
-
       const blob = await zip.generateAsync({ type: "blob" });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -582,18 +649,36 @@ export function OptimizeView() {
   return (
     <section aria-labelledby="optimize-view" className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="flex flex-col gap-4">
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="size-3.5" aria-hidden />
+            Back to the press
+          </button>
+        ) : null}
         <h2 id="optimize-view" className="text-lg font-semibold tracking-tight">
-          Scan &amp; Optimize
+          Folder shrink
         </h2>
         <p className="text-sm text-muted-foreground">
-          Pick your local project folder and batch-encode the videos it references. Download a zip with optimized files, a report, and ready-to-drop snippets.
+          Run the Check-Up to see what each video is made of, then press them all in one pass. Output mirrors the folder into <code className="font-mono">pixel-pressed-…/</code> next to the source.
         </p>
 
         <div className="flex flex-wrap items-center gap-3">
           <Button onClick={handleDirectory} disabled={working}>
             <FileVideo className="size-4" aria-hidden />
-            Choose project folder
+            Choose folder
           </Button>
+          {candidates.length > 0 ? (
+            <Button variant="secondary" onClick={() => void runCheckUp()} disabled={working || checkUp === "running"}>
+              {checkUp === "running"
+                ? <Loader2 className="size-4 animate-spin" aria-hidden />
+                : <ScanSearch className="size-4" aria-hidden />}
+              {checkUp === "running" ? "Checking…" : checkUp === "done" ? "Check-Up refreshed" : "Run folder Check-Up"}
+            </Button>
+          ) : null}
           <input
             id="optimize-directory-input"
             type="file"
@@ -674,7 +759,7 @@ export function OptimizeView() {
               </div>
             </div>
             <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-2">
-              <span className="text-sm font-medium">Optimization queue</span>
+              <span className="text-sm font-medium">Check-Up list</span>
               <button
                 type="button"
                 onClick={() => setCandidates([])}
@@ -689,7 +774,11 @@ export function OptimizeView() {
                 <li key={candidate.filePath} className="flex flex-wrap items-center gap-3 px-4 py-3 text-xs">
                   <span className="flex-1 min-w-0">
                     <Marquee title={candidate.filePath} className="font-mono text-[11px]">{candidate.filePath}</Marquee>
-                    <p className="mt-0.5 tabular-nums text-muted-foreground">{(candidate.size / 1024 / 1024).toFixed(1)} MB</p>
+                    <p className="mt-0.5 tabular-nums text-muted-foreground">
+                      {(candidate.size / 1024 / 1024).toFixed(1)} MB
+                      {candidate.metadata ? ` · ${candidate.metadata.videoCodec} · ${candidate.metadata.width}×${candidate.metadata.height} · ${candidate.metadata.bitrate ? `${Math.round(candidate.metadata.bitrate / 1000)} kbps` : ""}` : ""}
+                      {candidate.metadata ? ` · ~${Math.max(0, Math.round((1 - estimateSizeBytes(candidate.size, 26, "h264") / candidate.size) * 100))}% savable` : ""}
+                    </p>
                     {candidate.status === "encoding" ? (
                       <span className="mt-1.5 block">
                         <span
@@ -732,7 +821,7 @@ export function OptimizeView() {
                       onClick={() => optimizeOne(index)}
                     >
                       <Zap className="size-4" aria-hidden />
-                      Optimize
+                      Press
                     </Button>
                   )}
                 </li>
@@ -746,8 +835,8 @@ export function OptimizeView() {
             <Button onClick={optimizeAll} disabled={working || pendingCount === 0}>
               {working ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Zap className="size-4" aria-hidden />}
               {working
-                ? `Processing ${finishedCount}/${candidates.length} · ${Math.round(overallProgress)}%`
-                : `Optimize all (${pendingCount} pending)`}
+                ? `Pressing ${finishedCount}/${candidates.length} · ${Math.round(overallProgress)}%`
+                : `Press all (${pendingCount} videos)`}
             </Button>
             {working ? (
               <Button variant="destructive" onClick={cancelAll}>
@@ -767,8 +856,7 @@ export function OptimizeView() {
         <div className="rounded-xl border border-border bg-card/50 p-4 text-xs text-muted-foreground backdrop-blur">
           <h3 className="text-sm font-medium text-foreground">What you get</h3>
           <ul className="mt-2 space-y-1.5">
-            <li>· Optimized <code className="font-mono">.mp4</code> per flagged video</li>
-            <li>· <code className="font-mono">video-snippet.html</code> and <code className="font-mono">video-snippet.jsx</code> with sources + poster</li>
+            <li>· Optimized <code className="font-mono">.mp4</code> per video in the folder</li>
             <li>· <code className="font-mono">optimization-report.txt</code> with bytes before/after</li>
             <li>· A single <code className="font-mono">pixel-press-optimized-bundle.zip</code></li>
           </ul>
@@ -787,10 +875,6 @@ export function OptimizeView() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-border bg-card/50 p-4 text-xs leading-snug text-muted-foreground backdrop-blur">
-          <FileCode2 className="mb-1.5 size-4" aria-hidden />
-          Paste the generated snippet into your components. Keep the optimized <code className="font-mono">.mp4</code> files in the same directory so relative paths keep working.
-        </div>
       </aside>
     </section>
   );
