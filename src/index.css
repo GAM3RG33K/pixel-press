@@ -103,3 +103,9 @@
     scroll-behavior: auto !important;
   }
 }
+
+.marquee-active { display: inline-block; max-width: 100%; }
+.marquee-inner { display: inline-block; animation: marquee-slide 9s linear infinite; }
+@keyframes marquee-slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.marquee-active:hover .marquee-inner { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .marquee-inner { animation: none; } }
