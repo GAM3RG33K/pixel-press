@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Cpu, HardDrive, Loader2, RefreshCw, Settings, X, CheckCircle2, AlertCircle } from "lucide-react";
 
@@ -54,7 +54,7 @@ export function SettingsDrawer() {
             className="absolute inset-0 bg-black/50"
             onClick={() => setOpen(false)}
           />
-          <aside className="relative flex h-full w-full max-w-[456px] flex-col overflow-hidden border-l border-border bg-background">
+          <aside className="relative flex h-full w-full max-w-[560px] flex-col overflow-hidden border-l border-border bg-background">
             <div className="flex h-14 shrink-0 items-center justify-between border-b border-border/60 px-5">
               <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight">
                 <Settings className="size-4 text-primary" aria-hidden />
@@ -70,7 +70,7 @@ export function SettingsDrawer() {
               </button>
             </div>
             <div className="flex flex-1 overflow-hidden">
-              <nav aria-label="Settings sections" className="flex w-[180px] shrink-0 flex-col gap-1 border-r border-border/60 p-3">
+              <nav aria-label="Settings sections" className="flex w-[220px] shrink-0 flex-col gap-1 border-r border-border/60 p-3">
                 {SECTIONS.map(({ id, label, Icon }) => {
                   const active = section === id;
                   return (
@@ -176,6 +176,11 @@ function UpdatesSection() {
   const [update, setUpdate] = useState<{ version: string; body: string; date: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
+  const [bytes, setBytes] = useState<number>(0);
+  const [contentLength, setContentLength] = useState<number>(0);
+  // Hold the plugin's Update object so install() doesn't re-run check()
+  // (a second network round-trip that can hang silently and looks like 0%).
+  const updateRef = useRef<import("@tauri-apps/plugin-updater").Update | null>(null);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -196,6 +201,7 @@ function UpdatesSection() {
     try {
       const { check: checkForUpdates } = await import("@tauri-apps/plugin-updater");
       const result = await checkForUpdates();
+      updateRef.current = result;
       if (!result) { setState("up-to-date"); return; }
       setUpdate({ version: result.version, body: result.body ?? "", date: result.date ?? "" });
       setState("available");
@@ -208,19 +214,30 @@ function UpdatesSection() {
 
   const install = useCallback(async () => {
     if (!update) return;
-    setState("installing"); setProgress(0); setError(null);
+    setState("installing"); setProgress(0); setBytes(0); setContentLength(0); setError(null);
     try {
-      const { check: checkForUpdates } = await import("@tauri-apps/plugin-updater");
-      const result = await checkForUpdates();
+      let result = updateRef.current;
+      if (!result) {
+        const { check: checkForUpdates } = await import("@tauri-apps/plugin-updater");
+        result = await checkForUpdates();
+        updateRef.current = result;
+      }
       if (!result) { setState("up-to-date"); return; }
       let downloaded = 0;
-      let contentLength = 0;
+      let total = 0;
       await result.downloadAndInstall((event) => {
-        if (event.event === "Started") { contentLength = event.data.contentLength ?? 0; }
-        else if (event.event === "Progress") {
+        if (event.event === "Started") {
+          total = event.data.contentLength ?? 0;
+          setContentLength(total);
+        } else if (event.event === "Progress") {
           downloaded += event.data.chunkLength ?? 0;
-          setProgress(contentLength > 0 ? Math.floor((downloaded / contentLength) * 100) : 0);
-        } else if (event.event === "Finished") { setProgress(100); }
+          setBytes(downloaded);
+          // GitHub's asset endpoint may not expose Content-Length; only
+          // compute a percent when we actually know the size.
+          setProgress(total > 0 ? Math.floor((downloaded / total) * 100) : null);
+        } else if (event.event === "Finished") {
+          setProgress(100);
+        }
       });
       setState("ready");
     } catch (e) {
@@ -247,19 +264,29 @@ function UpdatesSection() {
 
   const renderState = () => {
     switch (state) {
-      case "installing":
+      case "installing": {
+        const known = progress !== null;
+        const mb = (bytes / (1024 * 1024)).toFixed(1);
+        const totalMb = contentLength > 0 ? (contentLength / (1024 * 1024)).toFixed(1) : null;
         return (
           <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 px-3 py-3">
             <div className="flex items-center justify-between text-[11px] text-primary">
-              <span>Installing update…</span>
-              <span className="tabular-nums">{progress ?? 0}%</span>
+              <span>{known ? "Installing update…" : "Downloading…"}</span>
+              <span className="tabular-nums">
+                {known ? `${progress}%` : totalMb ? `${mb} / ${totalMb} MB` : `${mb} MB`}
+              </span>
             </div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-primary/20">
-              <div className="h-full bg-primary transition-all duration-200" style={{ width: `${progress ?? 0}%` }} />
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-primary/20" role="progressbar" aria-valuenow={known ? progress : undefined} aria-valuemin={0} aria-valuemax={100}>
+              {known ? (
+                <div className="h-full bg-primary transition-all duration-200" style={{ width: `${progress}%` }} />
+              ) : (
+                <div className="h-full w-1/3 animate-pulse rounded-full bg-primary/70" />
+              )}
             </div>
-            <p className="mt-2 text-[10px] text-muted-foreground">Keep the app open; it will restart when the install finishes.</p>
+            <p className="mt-2 text-[10px] text-muted-foreground">Keep the app open; it will restart when the install finishes. Size is reported by the server when available.</p>
           </div>
         );
+      }
       case "ready":
         return (
           <div className="mt-4 rounded-lg border border-success/30 bg-success/5 px-3 py-3">

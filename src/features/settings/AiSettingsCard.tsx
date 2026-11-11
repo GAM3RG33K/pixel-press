@@ -24,8 +24,8 @@ const PREF_OPTIONS: { id: AIMode; title: string; body: string; badge?: string }[
   },
   {
     id: "smollm2-360m",
-    title: "SmolLM2-360M (recommended)",
-    body: "Small local instruct model (~270 MB). Parses natural-language intent into a validated plan.",
+    title: "SmolLM2-360M",
+    body: "Small local instruct model (~270 MB). Parses natural-language intent into a validated plan. Recommended.",
     badge: "~270 MB",
   },
 ];
@@ -212,11 +212,11 @@ export function AiSettingsCard() {
                   : "border-border bg-background/40 hover:border-primary/30",
               )}
             >
-              <p className="flex items-center gap-1.5 text-xs font-semibold">
+              <p className="flex min-w-0 items-start gap-1.5 break-words text-xs font-semibold leading-snug">
                 {option.id === 'rule-engine'
-                  ? <Zap className="size-3.5 text-warning" aria-hidden />
-                  : <BrainCircuit className="size-3.5 text-info" aria-hidden />}
-                {option.title}
+                  ? <Zap className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
+                  : <BrainCircuit className="mt-0.5 size-3.5 shrink-0 text-info" aria-hidden />}
+                <span>{option.title}</span>
               </p>
               <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{option.body}</p>
               <span className="mt-2 inline-flex items-center gap-1 rounded-full border border-border bg-card/60 px-2 py-0.5 text-[10px] text-muted-foreground">
