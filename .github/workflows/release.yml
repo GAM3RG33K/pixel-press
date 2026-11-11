@@ -69,6 +69,7 @@ jobs:
             platform: ubuntu-22.04-arm
             args: --bundles appimage,deb
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -105,18 +106,22 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
+          # One cache per matrix leg: both macOS legs build different target
+          # triples on the same runner image, so a single shared key would
+          # restore an image missing half the artifacts anyway.
+          shared-key: ${{ matrix.name }}
           cache-on-failure: true
 
-      # Dedicated cache for the llama.cpp cmake build tree (the single biggest
-      # compile in the pipeline). Independent of rust-cache's keying; restored
-      # on any key prefix hit.
+      # llama-cmake-cache stores per-target-triple subdirs (hashed), so same-
+      # OS legs can share the tree safely — but x86_64 and aarch64 Linux
+      # would otherwise share one entry and bloat it. Key on arch+OS.
       - name: Cache llama.cpp cmake build
         uses: actions/cache@v4
         with:
           path: src-tauri/target/llama-cmake-cache
-          key: llama-cmake-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          key: llama-cmake-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
-            llama-cmake-${{ runner.os }}-
+            llama-cmake-${{ runner.arch }}-${{ runner.os }}-
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
@@ -188,6 +193,7 @@ jobs:
   # sync the landing page and dev-latest.json into gh-pages. Devs tags only.
   publish-pages:
     needs: publish
+    timeout-minutes: 10
     if: ${{ github.ref_type == 'tag' && contains(github.ref_name, '-dev') }}
     runs-on: ubuntu-latest
     permissions:
