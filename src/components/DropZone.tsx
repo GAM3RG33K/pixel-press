@@ -155,7 +155,7 @@ export function DropZone({
         <label
           htmlFor="file-input-compact"
           className={[
-            "inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-border bg-card/60 px-4 text-sm backdrop-blur transition-colors hover:bg-accent",
+            "inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-press-paper-edge bg-press-paper px-4 text-sm transition-colors hover:border-primary/50",
             disabled || busy ? "pointer-events-none opacity-50" : "",
           ].join(" ")}
         >
@@ -185,7 +185,7 @@ export function DropZone({
         "group flex flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center transition-colors",
         dragging
           ? "border-primary/70 bg-primary/10"
-          : "border-border bg-card/40 hover:border-primary/40 hover:bg-card/60",
+          : "border-press-paper-edge bg-press-paper hover:border-primary/50",
         disabled || busy ? "pointer-events-none opacity-60" : "",
       ].join(" ")}
       onDragOver={(event) => {

@@ -24,7 +24,7 @@ export function StageCard({
   const pct = total > 0 ? Math.min(100, Math.round((copied / total) * 100)) : 0;
   const gb = (n: number) => (n >= 1024 * 1024 * 1024 ? `${(n / 1024 / 1024 / 1024).toFixed(2)} GB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
   return (
-    <div className="rounded-xl border border-border bg-card/50 p-4 backdrop-blur" role="status">
+    <div className="press-paper rounded-xl p-4" role="status">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="flex min-w-0 items-center gap-2 text-sm">
           <Loader2 className="size-4 shrink-0 animate-spin text-primary" aria-hidden />

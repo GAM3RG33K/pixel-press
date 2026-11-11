@@ -38,7 +38,7 @@ export function SettingsDrawer() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls="settings-drawer"
-        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card/60 px-2.5 py-1.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+        className="inline-flex items-center gap-1.5 rounded-md border border-press-paper-edge bg-press-paper px-2.5 py-1.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
         title="Settings — engine diagnostics & cache"
       >
         <Settings className="size-3.5" aria-hidden />
@@ -54,7 +54,7 @@ export function SettingsDrawer() {
             className="absolute inset-0 bg-black/50"
             onClick={() => setOpen(false)}
           />
-          <aside className="relative flex h-full w-full max-w-[560px] flex-col overflow-hidden border-l border-border bg-background">
+          <aside className="relative flex h-full w-full max-w-[560px] flex-col overflow-hidden border-l border-press-paper-edge bg-background">
             <div className="flex h-14 shrink-0 items-center justify-between border-b border-border/60 px-5">
               <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight">
                 <Settings className="size-4 text-primary" aria-hidden />
@@ -144,7 +144,7 @@ function CacheSection() {
   }
   if (!stats) return <Loader2 className="size-5 animate-spin text-muted-foreground" aria-hidden />;
   return (
-    <div className="rounded-xl border border-border bg-card/50 p-4 backdrop-blur">
+    <div className="press-paper rounded-xl p-4">
       <p className="text-2xl font-bold tabular-nums">{formatBytes(stats.total_bytes)}</p>
       <p className="mt-1 text-[11px] text-muted-foreground">total cache — staged inputs, probe/encode temp files</p>
       <div className="mt-4 divide-y divide-border/60 rounded-lg border border-border/60">
@@ -256,7 +256,7 @@ function UpdatesSection() {
 
   if (!isTauri()) {
     return (
-      <div className="rounded-xl border border-border bg-card/50 p-4 text-[11px] text-muted-foreground backdrop-blur">
+      <div className="press-paper rounded-xl p-4 text-[11px] text-muted-foreground">
         Updates are only available from the Tauri desktop build.
       </div>
     );
@@ -325,7 +325,7 @@ function UpdatesSection() {
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card/50 p-4 backdrop-blur">
+    <div className="press-paper rounded-xl p-4">
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-sm font-semibold tracking-tight">Updates</p>

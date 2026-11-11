@@ -180,7 +180,7 @@ export function AiSettingsCard() {
   return (
     <section
       aria-labelledby="ai-settings"
-      className="rounded-xl border border-border bg-card/50 p-4 backdrop-blur"
+      className="press-paper rounded-xl p-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>

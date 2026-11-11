@@ -83,7 +83,7 @@ export function EngineCheckCard() {
   return (
     <section
       aria-labelledby="engine-check"
-      className="mt-6 rounded-xl border border-border bg-card/50 p-5 backdrop-blur"
+      className="mt-6 press-paper rounded-xl p-5"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>

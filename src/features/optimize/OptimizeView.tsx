@@ -736,7 +736,7 @@ export function OptimizeView({
         ) : null}
 
         {candidates.length > 0 ? (
-          <div className="overflow-hidden rounded-xl border border-border bg-card/50 backdrop-blur">
+          <div className="overflow-hidden press-paper rounded-xl">
             <div className="border-b border-border/60 px-4 py-2.5">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm font-medium">Overall progress</span>
@@ -853,7 +853,7 @@ export function OptimizeView({
       </div>
 
       <aside className="flex flex-col gap-4">
-        <div className="rounded-xl border border-border bg-card/50 p-4 text-xs text-muted-foreground backdrop-blur">
+        <div className="press-paper rounded-xl p-4 text-xs text-muted-foreground">
           <h3 className="text-sm font-medium text-foreground">What you get</h3>
           <ul className="mt-2 space-y-1.5">
             <li>· Optimized <code className="font-mono">.mp4</code> per video in the folder</li>
@@ -865,7 +865,7 @@ export function OptimizeView({
           </p>
         </div>
 
-        <div className="rounded-xl border border-border bg-card/50 p-4 text-xs text-muted-foreground backdrop-blur">
+        <div className="press-paper rounded-xl p-4 text-xs text-muted-foreground">
           <h3 className="text-sm font-medium text-foreground">Savings estimate</h3>
           <p className="mt-2 tabular-nums text-lg font-semibold text-primary">
             {totalBytes > 0 ? Math.max(0, Math.round((1 - doneBytes / totalBytes) * 100)) : 0}%

@@ -66,7 +66,7 @@ export function DiagnosticsFab() {
         <div
           role="dialog"
           aria-label="Diagnostics"
-          className="flex w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-border bg-card/95 shadow-2xl backdrop-blur"
+          className="flex w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-press-paper-edge bg-press-paper shadow-2xl"
         >
           <div className="flex items-center justify-between gap-2 border-b border-border/60 px-4 py-2.5">
             <div className="flex items-center gap-2 text-sm font-medium">
@@ -98,7 +98,7 @@ export function DiagnosticsFab() {
               </Button>
             </div>
           </div>
-          <div ref={listRef} className="max-h-72 overflow-y-auto bg-background/60 px-3 py-2 font-mono text-[10px] leading-snug">
+          <div ref={listRef} className="max-h-72 overflow-y-auto bg-background px-3 py-2 font-mono text-[10px] leading-snug">
             {entries.length === 0 ? (
               <p className="px-2 py-6 text-center text-muted-foreground">No events yet. Do something in the app and come back.</p>
             ) : (
@@ -121,7 +121,7 @@ export function DiagnosticsFab() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? "Close diagnostics" : "Open diagnostics"}
-        className="group flex size-11 items-center justify-center rounded-full border border-border bg-card/80 shadow-lg backdrop-blur transition-colors hover:border-primary/40 hover:bg-card"
+        className="group flex size-11 items-center justify-center rounded-full border border-press-paper-edge bg-press-paper shadow-[0_8px_32px_oklch(0_0_0/0.45)] transition-colors hover:border-primary/50"
       >
         <Terminal className="size-5 text-muted-foreground transition-colors group-hover:text-foreground" aria-hidden />
       </button>

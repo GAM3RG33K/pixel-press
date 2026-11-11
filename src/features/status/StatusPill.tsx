@@ -76,7 +76,7 @@ export function StatusPill({ className }: StatusPillProps) {
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-2.5 py-1 text-[11px] text-muted-foreground backdrop-blur",
+        "inline-flex items-center gap-2 rounded-full border border-press-paper-edge bg-press-paper px-2.5 py-1 text-[11px] text-muted-foreground",
         className,
       )}
       aria-label="Engine and AI status"

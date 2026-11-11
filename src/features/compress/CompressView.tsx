@@ -546,7 +546,7 @@ export function CompressView({
         ) : null}
 
         {file && status !== "probing" ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/50 p-4 backdrop-blur">
+          <div className="flex flex-wrap items-center justify-between gap-3 press-paper rounded-xl p-4">
             <div className="min-w-0">
               <p className="flex items-center gap-2 font-medium">
                 <FileVideo className="size-4 text-primary" aria-hidden />
@@ -575,7 +575,7 @@ export function CompressView({
 
         {metadata ? (
           <>
-            <div className="rounded-xl border border-border bg-card/50 p-4 backdrop-blur">
+            <div className="press-paper rounded-xl p-4">
               <label htmlFor="intent-bar" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Intent (optional)
               </label>
@@ -697,7 +697,7 @@ export function CompressView({
         })() : null}
 
         {outputs.length > 0 ? (
-          <div className="overflow-hidden rounded-xl border border-border bg-card/50 backdrop-blur">
+          <div className="overflow-hidden press-paper rounded-xl">
             <div className="border-b border-border/60 px-4 py-2.5 text-sm font-medium">
               Encoded outputs
               <span className="ml-2 text-xs font-normal text-muted-foreground">compressed locally · on this device</span>
@@ -821,7 +821,7 @@ export function CompressView({
 
       <aside className="flex flex-col gap-4">
         {variantSet ? (
-          <div className="rounded-xl border border-border bg-card/50 p-4 backdrop-blur">
+          <div className="press-paper rounded-xl p-4">
             <h3 className="text-sm font-medium">Planned output</h3>
             <ul className="mt-2 space-y-2 text-xs text-muted-foreground">
               {variantSet.variants.map((variant) => (
@@ -839,7 +839,7 @@ export function CompressView({
           </div>
         ) : null}
 
-        <div className="rounded-xl border border-border bg-card/50 p-4 text-xs text-muted-foreground backdrop-blur">
+        <div className="press-paper rounded-xl p-4 text-xs text-muted-foreground">
           <h3 className="text-sm font-medium text-foreground">How this works</h3>
           <ol className="mt-2 list-decimal space-y-1.5 pl-4">
             <li>FFprobe reads duration, dimensions, fps and audio — entirely locally.</li>
@@ -850,7 +850,7 @@ export function CompressView({
         </div>
 
         {capabilities ? (
-          <div className="rounded-xl border border-border bg-card/50 p-4 text-xs text-muted-foreground backdrop-blur">
+          <div className="press-paper rounded-xl p-4 text-xs text-muted-foreground">
             <div className="flex items-center gap-2">
               <FileAudio className="size-4" aria-hidden />
               <h3 className="text-sm font-medium text-foreground">Encoder status</h3>
@@ -863,7 +863,7 @@ export function CompressView({
             </ul>
           </div>
         ) : (
-          <div className="rounded-xl border border-border bg-card/50 p-4 text-xs text-muted-foreground backdrop-blur">
+          <div className="press-paper rounded-xl p-4 text-xs text-muted-foreground">
             Probe a video first to enable encode actions.
           </div>
         )}
@@ -874,7 +874,7 @@ export function CompressView({
 
 function ProgressBar({ progress, active, label }: { progress: number; active: boolean; label: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card/50 p-4 backdrop-blur">
+    <div className="press-paper rounded-xl p-4">
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs text-muted-foreground">{label}</span>
         <span className="text-xs tabular-nums text-muted-foreground">{Math.round(progress)}%</span>
