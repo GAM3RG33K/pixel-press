@@ -39,6 +39,8 @@ fn main() {
             reveal_path,
             allow_file_path,
             next_available_path,
+            cache_stats,
+            clear_cache,
         ])
         .setup(|app| {
             let path = app
@@ -375,6 +377,86 @@ async fn plan_intent(app: AppHandle, metadata: llm::VideoMetadata, intent: Optio
         preserve_fps: plan.preserve_fps,
         rule_source: plan.rule_source,
     })
+}
+
+#[derive(serde::Serialize)]
+struct CachePart {
+    label: String,
+    bytes: u64,
+}
+
+#[derive(serde::Serialize)]
+struct CacheStats {
+    total_bytes: u64,
+    parts: Vec<CachePart>,
+}
+
+#[tauri::command]
+fn cache_stats(app: tauri::AppHandle) -> Result<CacheStats, String> {
+    let cache = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("cache");
+    let mut buckets: std::collections::BTreeMap<String, u64> = Default::default();
+    let mut total: u64 = 0;
+    if cache.is_dir() {
+        for entry in walkdir::WalkDir::new(&cache) {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let size = entry.metadata().map_err(|e| e.to_string())?.len();
+            let name = entry.file_name().to_string_lossy().to_lowercase();
+            let bucket = if name.contains("ffprobe") || name.contains("tmp-") || name.contains(".") && name.len() < 12 {
+                "probes"
+            } else if name.contains("h264") || name.contains("webm") || name.contains("optimized") || name.contains("x264") || name.contains("vp9") {
+                "variants"
+            } else {
+                "staged"
+            };
+            *buckets.entry(bucket.into()).or_default() += size;
+            total += size;
+        }
+    }
+    let mut parts: Vec<CachePart> = buckets
+        .into_iter()
+        .map(|(label, bytes)| CachePart { label, bytes })
+        .collect();
+    parts.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+    Ok(CacheStats { total_bytes: total, parts })
+}
+
+#[tauri::command]
+fn clear_cache(app: tauri::AppHandle) -> Result<u64, String> {
+    let cache = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("cache");
+    let mut freed: u64 = 0;
+    if !cache.is_dir() {
+        return Ok(0);
+    }
+    for entry in std::fs::read_dir(&cache).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let meta = entry.metadata().map_err(|e| e.to_string())?;
+        if meta.is_file() {
+            freed += meta.len();
+            std::fs::remove_file(entry.path()).map_err(|e| e.to_string())?;
+        } else if meta.is_dir() {
+            let dir_bytes: u64 = walkdir::WalkDir::new(entry.path())
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter_map(|e| e.metadata().ok())
+                .filter(|m| m.is_file())
+                .map(|m| m.len())
+                .sum();
+            std::fs::remove_dir_all(entry.path()).map_err(|e| e.to_string())?;
+            freed += dir_bytes;
+        }
+    }
+    Ok(freed)
 }
 
 #[derive(serde::Serialize)]

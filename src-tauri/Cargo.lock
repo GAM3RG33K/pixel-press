@@ -2777,6 +2777,7 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-shell",
  "tokio",
+ "walkdir",
  "zip",
 ]
 
