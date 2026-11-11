@@ -129,7 +129,8 @@ jobs:
           # "pixel-press <tag> (Development)"; plain tags build production.
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: ${{ steps.flavor.outputs.flavor == 'dev' && format('pixel-press {0} (Development)', github.ref_name) || (github.ref_type == 'tag' && format('pixel-press {0}', github.ref_name) || '') }}
-          releaseDraft: true
+          # Dev tags (v*-dev) publish as prereleases so prod users' "latest release" stays put; prod tags stay drafts.
+          releaseDraft: ${{ github.ref_type == 'tag' && !contains(github.ref_name, '-dev') }}
           prerelease: ${{ github.ref_type == 'tag' && contains(github.ref_name, '-') }}
           releaseBody: |
             **pixel-press** — local-first video compression for the web. Nothing uploads; everything runs on your machine.

@@ -49,6 +49,10 @@ git tag -a v0.1.1-dev -m "v0.1.1-dev"
 git push origin v0.1.1-dev
 ```
 
+## Updating
+
+The desktop app checks for updates from Settings → Updates (prod: latest prod release; dev flavor: dev prereleases only). When a newer release exists you can download the installer (.dmg/.AppImage/.msi) straight into ~/Downloads and install it manually — the app does not install over a running copy.
+
 ## How it works
 
 1. Drop a video → native `ffprobe` reads metadata from the file's headers in milliseconds — even for 10 GB files (huge files encode straight from the untouched source path; no in-memory copy).

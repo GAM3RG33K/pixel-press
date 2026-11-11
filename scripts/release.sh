@@ -153,10 +153,12 @@ ask_flavor() {
 }
 
 # ── version menu (sets CHOICE_TAG) ───────────────────────────────────────────
-ask_bump() { # flavor base_tag
-  local flavor="$1" base_tag="$2" suf=''
+ask_bump() { # flavor base_tag [exact_patch]
+  local flavor="$1" base_tag="$2" exact_patch="${3:-}" suf=''
   parse_tag "$base_tag"
   [[ "$flavor" == 'dev' ]] && suf='-dev'
+
+
 
   SUGGEST_MAJOR="v$(bump_version major "$S_MAJOR" "$S_MINOR" "$S_PATCH")${suf}"
   SUGGEST_MINOR="v$(bump_version minor "$S_MAJOR" "$S_MINOR" "$S_PATCH")${suf}"
@@ -166,6 +168,13 @@ ask_bump() { # flavor base_tag
     SUGGEST_MAJOR="$(next_free_dev "$(bump_version major "$S_MAJOR" "$S_MINOR" "$S_PATCH")")"
     SUGGEST_MINOR="$(next_free_dev "$(bump_version minor "$S_MAJOR" "$S_MINOR" "$S_PATCH")")"
     SUGGEST_PATCH="$(next_free_dev "$(bump_version patch "$S_MAJOR" "$S_MINOR" "$S_PATCH")")"
+  fi
+
+  # After the auto-bump, the default (patch) suggestion should be exactly the
+  # bumped version, not one patch beyond it.
+  if [[ -n "$exact_patch" ]]; then
+    SUGGEST_PATCH="v${exact_patch}${suf}"
+    [[ "$flavor" == 'dev' ]] && SUGGEST_PATCH="$(next_free_dev "$exact_patch")"
   fi
 
   printf '\nNext versions based on %s:\n' "${GREEN}${base_tag}${RESET}"
@@ -213,18 +222,39 @@ section "── Latest ${FLAVOR} release for reference ──"
 LATEST_FLAVOR="$(latest_tag "$FLAVOR")"
 show_reference "$FLAVOR" "$LATEST_FLAVOR"
 
-BASE_TAG="${LATEST_FLAVOR:-v0.0.0}"
-if [[ -z "$LATEST_FLAVOR" ]]; then
-  if [[ "$FLAVOR" == 'dev' ]]; then
-    OTHER="$(latest_tag prod)"
-  else
-    OTHER="$(latest_tag dev)"
-  fi
-  if [[ -n "$OTHER" ]]; then
-    info "no ${FLAVOR} tags yet — basing next version off latest other-flavor tag: ${OTHER}"
-    BASE_TAG="$OTHER"
-  fi
-fi
+# ── version auto-bump (both flavors) ─────────────────────────────────────────
+# Bump the baked app version by one patch before tagging so release tags track
+# the version the app reports. Tags created here point at the bump commit.
+CURRENT_VERSION=$(node -p "require('./package.json').version")
+NEW_VERSION=$(node -p "const p=require('./package.json').version.split('.').map(Number); p[2]=p[2]+1; p.join('.')")
+
+section '── Version bump ──────────────────────────────'
+printf '  %scurrent:%s    %s\n' "$DIM" "$RESET" "$CURRENT_VERSION"
+printf '  %snext:%s       %s  %s(auto-bumped — release tags track the baked app version)%s\n' "$DIM" "$RESET" "$NEW_VERSION" "$DIM" "$RESET"
+read -rp "Continue with version bump to $NEW_VERSION? [Y/n]: " CONTINUE || CONTINUE=Y
+case "$(printf '%s' "${CONTINUE:-y}" | tr '[:upper:]' '[:lower:]')" in y|yes) ;; *) warn 'Aborted — nothing bumped.'; exit 0 ;; esac
+
+python3 - <<PY
+import json
+for path in ['package.json', 'src-tauri/tauri.conf.json']:
+    with open(path) as f:
+        obj = json.load(f)
+    obj['version'] = '$NEW_VERSION'
+    with open(path, 'w') as f:
+        json.dump(obj, f, indent=2)
+        f.write('\n')
+PY
+
+git add package.json src-tauri/tauri.conf.json
+git commit -m "chore(release): bump version to $NEW_VERSION"
+ok "version bumped to $NEW_VERSION and committed"
+HEADSHA="$(git log --oneline -1)"
+BRANCH="$(git branch --show-current)"
+DIRTY=""
+
+# Base the wizard on the freshly bumped version — the patch suggestion defaults
+# to exactly it (see ask_bump's exact_patch argument).
+BASE_TAG="v${NEW_VERSION}"
 
 section '── Version ───────────────────────────────────'
 if [[ -n "$DIRTY" ]]; then
@@ -234,7 +264,7 @@ else
   info "Tag will point at HEAD (${HEADSHA}) on branch ${BRANCH}."
 fi
 
-ask_bump "$FLAVOR" "$BASE_TAG"
+ask_bump "$FLAVOR" "$BASE_TAG" "$NEW_VERSION"
 TAG="$CHOICE_TAG"
 
 # ── final confirmation ───────────────────────────────────────────────────────
