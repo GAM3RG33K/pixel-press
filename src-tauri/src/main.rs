@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Emitter};
 use tauri_plugin_fs::FsExt;
 use tauri_plugin_dialog::DialogExt;
 
@@ -39,6 +39,8 @@ fn main() {
             reveal_path,
             allow_file_path,
             next_available_path,
+            latest_release,
+            download_asset,
             cache_stats,
             clear_cache,
         ])
@@ -457,6 +459,122 @@ fn clear_cache(app: tauri::AppHandle) -> Result<u64, String> {
         }
     }
     Ok(freed)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReleaseAsset {
+    name: String,
+    download_url: String,
+    size: u64,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LatestRelease {
+    tag: String,
+    name: String,
+    body: String,
+    html_url: String,
+    published_at: String,
+    assets: Vec<ReleaseAsset>,
+}
+
+const REPO: &str = "GAM3RG33K/pixel-press";
+
+fn parse_release_value(v: &serde_json::Value) -> Result<LatestRelease, String> {
+    let unparseable = || "could not parse GitHub release".to_string();
+    let tag = v.get("tag_name").and_then(|t| t.as_str()).ok_or_else(|| "release has no tag/name".to_string())?.to_string();
+    let name = v.get("name").and_then(|n| n.as_str()).ok_or_else(|| "release has no tag/name".to_string())?.to_string();
+    let body = v.get("body").and_then(|b| b.as_str()).unwrap_or("").to_string();
+    let html_url = v.get("html_url").and_then(|u| u.as_str()).unwrap_or("").to_string();
+    let published_at = v.get("published_at").and_then(|p| p.as_str()).unwrap_or("").to_string();
+    let assets = v
+        .get("assets")
+        .and_then(|a| a.as_array())
+        .ok_or_else(unparseable)?
+        .iter()
+        .map(|a| {
+            Ok(ReleaseAsset {
+                name: a.get("name").and_then(|x| x.as_str()).ok_or_else(unparseable)?.to_string(),
+                download_url: a.get("browser_download_url").and_then(|x| x.as_str()).ok_or_else(unparseable)?.to_string(),
+                size: a.get("size").and_then(|x| x.as_u64()).ok_or_else(unparseable)?,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(LatestRelease { tag, name, body, html_url, published_at, assets })
+}
+
+#[tauri::command]
+async fn latest_release(flavor: &str) -> Result<LatestRelease, String> {
+    if flavor != "dev" && flavor != "prod" {
+        return Err("unknown flavor".into());
+    }
+    let url = if flavor == "prod" {
+        format!("https://api.github.com/repos/{REPO}/releases/latest")
+    } else {
+        format!("https://api.github.com/repos/{REPO}/releases?per_page=20")
+    };
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .header("User-Agent", "pixel-press-update-check")
+        .send()
+        .await
+        .map_err(|e| format!("network ({e})"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(format!("network (status {})", status.as_u16()));
+    }
+    let value: serde_json::Value = resp.json().await.map_err(|_| "could not parse GitHub release".to_string())?;
+    if flavor == "prod" {
+        parse_release_value(&value)
+    } else {
+        let arr = value.as_array().ok_or_else(|| "could not parse GitHub release".to_string())?;
+        let found = arr.iter().find(|r| {
+            r.get("prerelease").and_then(|p| p.as_bool()) == Some(true)
+                && r.get("tag_name").and_then(|t| t.as_str()).map(|t| t.contains("-dev")).unwrap_or(false)
+        });
+        match found {
+            Some(r) => parse_release_value(r),
+            None => Err("no dev releases found".into()),
+        }
+    }
+}
+
+fn sanitize_asset_name(name: &str) -> String {
+    name.rsplit('/')
+        .next()
+        .and_then(|s| s.split('\\').next())
+        .filter(|s| !s.is_empty() && *s != "." && *s != "..")
+        .unwrap_or("update.bin")
+        .to_string()
+}
+
+#[tauri::command]
+async fn download_asset(app: tauri::AppHandle, url: String, asset_name: String) -> Result<String, String> {
+    let downloads = app
+        .path()
+        .download_dir()
+        .or_else(|_| app.path().home_dir().map(|h| h.join("Downloads")))
+        .map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&downloads).map_err(|e| e.to_string())?;
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .header("User-Agent", "pixel-press-update-check")
+        .send()
+        .await
+        .map_err(|e| format!("network ({e})"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(format!("network (status {})", status.as_u16()));
+    }
+    let total = resp.content_length().unwrap_or(0);
+    // Buffer in memory (assets are ~15-25 MB); frontend treats (0, total) as indeterminate.
+    let bytes = resp.bytes().await.map_err(|e| format!("network ({e})"))?;
+    let dest = downloads.join(sanitize_asset_name(&asset_name));
+    std::fs::write(&dest, &bytes).map_err(|e| format!("could not write {}: {e}", dest.display()))?;
+    let _ = app.emit("update-download-progress", (total, total));
+    Ok(dest.to_string_lossy().into_owned())
 }
 
 #[derive(serde::Serialize)]
