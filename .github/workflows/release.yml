@@ -179,8 +179,9 @@ jobs:
 
       # Dev releases publish a copy of the updater JSON to GitHub Pages so the dev
       # flavor's updater (pointing at gam3rgeek.github.io/pixel-press/dev-latest.json)
-      # can find the newest dev build without waiting for a prod release publish.
-      - name: Publish dev-latest.json to GitHub Pages
+      # can find the newest dev build. The gh-pages branch also carries the landing
+      # page (site/ on main) — this step SYNCS both instead of wiping the branch.
+      - name: Publish landing page + dev-latest.json to GitHub Pages
         if: ${{ steps.flavor.outputs.flavor == 'dev' && github.ref_type == 'tag' }}
         shell: bash
         env:
@@ -188,24 +189,36 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          echo "Publishing dev-latest.json for $TAG"
+          echo "Publishing gh-pages (site/ + dev-latest.json) for $TAG"
           url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/latest.json"
-          work="$(mktemp -d)/work"
-          mkdir -p "$work"
-          cd "$work"
-          if ! curl -fsSL "$url" -o dev-latest.json; then
+          tmp_json="$(mktemp)"
+          if ! curl -fsSL "$url" -o "$tmp_json"; then
             echo "::error::Could not fetch latest.json from $url — did the build upload it?"
             exit 1
           fi
-          gh_pages=".git-pages"
-          mkdir -p "$gh_pages" && cd "$gh_pages"
+          work="$(mktemp -d)/pages"
+          mkdir -p "$work" && cd "$work"
           git init -q
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/$GITHUB_REPOSITORY.git"
-          # gh-pages branch: force-push a single commit with dev-latest.json
-          git checkout -q --orphan gh-pages || git checkout -q -B gh-pages
-          mv "$work/dev-latest.json" ./dev-latest.json
-          git add dev-latest.json
-          git commit -q -m "chore: publish dev-latest.json ($TAG)"
-          git push -q --force origin gh-pages
+          # Clone existing gh-pages if present; otherwise create an orphan root.
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch -q --depth=1 origin gh-pages
+            git checkout -q -B gh-pages FETCH_HEAD
+          else
+            git checkout -q --orphan gh-pages
+            git rm -rfq --ignore-unmatch .
+          fi
+          # Refresh the landing page from site/ on the tagged commit; keep dev-latest.json fresh.
+          rm -rf ./*
+          cp -R "$GITHUB_WORKSPACE/site/." ./
+          cp "$tmp_json" ./dev-latest.json
+          touch .nojekyll
+          git add -A
+          if git diff --cached --quiet; then
+            echo "gh-pages already up to date"
+            exit 0
+          fi
+          git commit -q -m "chore: publish landing page + dev-latest.json ($TAG)"
+          git push -q origin gh-pages

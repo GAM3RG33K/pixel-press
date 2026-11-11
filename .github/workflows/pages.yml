@@ -1,0 +1,53 @@
+name: Pages
+
+# Deploys the landing page (site/) to the gh-pages branch on every push to main
+# that touches it. dev-latest.json on that branch is owned by the Release
+# workflow and is left untouched here.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish landing page to gh-pages
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)/pages"
+          mkdir -p "$work" && cd "$work"
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/$GITHUB_REPOSITORY.git"
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch -q --depth=1 origin gh-pages
+            git checkout -q -B gh-pages FETCH_HEAD
+          else
+            git checkout -q --orphan gh-pages
+            git rm -rfq --ignore-unmatch .
+          fi
+          # Preserve dev-latest.json (owned by the Release workflow); drop everything else.
+          find . -mindepth 1 -maxdepth 1 ! -name .git ! -name dev-latest.json -exec rm -rf {} +
+          cp -R "$GITHUB_WORKSPACE/site/." ./
+          touch .nojekyll
+          git add -A
+          if git diff --cached --quiet; then
+            echo "gh-pages already up to date"
+            exit 0
+          fi
+          git commit -q -m "chore: publish landing page (${GITHUB_SHA::7})"
+          git push -q origin gh-pages

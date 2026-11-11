@@ -16,6 +16,10 @@
 !/PRODUCT.md
 !/DESIGN.md
 
+# Landing page source (deployed to gh-pages by the Release workflow)
+!/site/
+!/site/**
+
 # App source and config
 !/src/
 !/src-tauri/
