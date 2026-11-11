@@ -40,6 +40,10 @@ test("local encode: probe runs with zero file-metadata in network traffic", asyn
 
   await page.goto("/");
 
+  // Route into the single-file flow via the keyboard map, then inject the clip.
+  await page.keyboard.press("1");
+  await expect(page.getByRole("heading", { name: "Smart Compress" })).toBeVisible();
+
   // Inject the generated clip into the hidden file input
   await page.setInputFiles("#file-input", srcPath);
 

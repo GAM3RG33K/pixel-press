@@ -8,6 +8,7 @@ test.describe("PWA shell", () => {
 
     await expect(page.getByText("pixel-press").first()).toBeVisible();
     await expect(page.getByLabel("Engine and AI status")).toBeVisible();
+    await page.getByRole("button", { name: /Settings/i }).click();
     await expect(
       page.getByRole("button", { name: /run engine check/i }),
     ).toBeVisible();
@@ -30,6 +31,7 @@ test.describe("PWA shell", () => {
     const chromeMajor = Number(/Chrome\/(\d+)/.exec(userAgent)?.[1] ?? 0);
     expect(chromeMajor).toBeGreaterThanOrEqual(146);
 
+    await page.getByRole("button", { name: /Settings/i }).click();
     await page.getByRole("button", { name: /run engine check/i }).click();
 
     await expect(page.getByText("Core loaded")).toBeVisible({
