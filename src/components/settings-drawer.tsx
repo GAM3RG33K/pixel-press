@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Cpu, HardDrive, Loader2, Settings, X } from "lucide-react";
+import { Cpu, HardDrive, Loader2, RefreshCw, Settings, X, CheckCircle2, Download, AlertCircle } from "lucide-react";
 
-import { isTauri, cacheStats, clearCache, type CacheStats } from "@/lib/tauri";
+import { isTauri, cacheStats, clearCache, latestRelease, downloadAsset, releaseFlavor, type CacheStats, type LatestRelease } from "@/lib/tauri";
 import { formatBytes } from "@/lib/format";
+import { isUpdateAvailable } from "@/lib/release";
 import { EngineCheckCard } from "@/features/status/EngineCheckCard";
 import { AiSettingsCard } from "@/features/settings/AiSettingsCard";
 
-const SECTIONS = [{ id: "engine", label: "Engine" }, { id: "cache", label: "Cache" }] as const;
+const SECTIONS = [
+  { id: "engine", label: "Engine", Icon: Cpu },
+  { id: "cache", label: "Cache", Icon: HardDrive },
+  { id: "updates", label: "Updates", Icon: RefreshCw },
+] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
 /**
@@ -67,8 +72,7 @@ export function SettingsDrawer() {
             </div>
             <div className="flex flex-1 overflow-hidden">
               <nav aria-label="Settings sections" className="flex w-36 shrink-0 flex-col gap-1 border-r border-border/60 p-3">
-                {SECTIONS.map(({ id, label }) => {
-                  const Icon = id === "engine" ? Cpu : HardDrive;
+                {SECTIONS.map(({ id, label, Icon }) => {
                   const active = section === id;
                   return (
                     <button
@@ -99,8 +103,10 @@ export function SettingsDrawer() {
                     <EngineCheckCard />
                     <AiSettingsCard />
                   </div>
-                ) : (
+                ) : section === "cache" ? (
                   <CacheSection />
+                ) : (
+                  <UpdatesSection />
                 )}
               </div>
             </div>
@@ -160,6 +166,146 @@ function CacheSection() {
         {clearing ? "Clearing…" : "Clear cache"}
       </button>
       <p className="mt-3 text-[10px] text-muted-foreground">Downloaded FFmpeg tools and the Local AI model are not affected.</p>
+    </div>
+  );
+}
+
+function UpdatesSection() {
+  const [flavor, setFlavor] = useState<"dev" | "prod" | null>(null);
+  const [currentVersion, setCurrentVersion] = useState<string>("");
+  const [state, setState] = useState<"idle" | "checking" | "up-to-date" | "available" | "error" | "none">("idle");
+  const [latest, setLatest] = useState<LatestRelease | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [downloadPath, setDownloadPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    void (async () => {
+      const f = await releaseFlavor();
+      setFlavor(f);
+      try {
+        const { getVersion } = await import("@tauri-apps/api/app");
+        setCurrentVersion((await getVersion()) ?? "");
+      } catch {
+        setCurrentVersion("");
+      }
+    })();
+  }, []);
+
+  const check = useCallback(async () => {
+    if (!flavor) return;
+    setState("checking"); setError(null); setLatest(null); setDownloadPath(null);
+    try {
+      const rel = await latestRelease(flavor);
+      setLatest(rel);
+      setState(isUpdateAvailable(currentVersion, rel.tag) ? "available" : "up-to-date");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("no dev releases")) { setState("none"); } else { setError(msg); setState("error"); }
+    }
+  }, [flavor, currentVersion]);
+
+  const runDownload = useCallback(async (asset: { name: string; downloadUrl: string }) => {
+    setDownloading(asset.name); setDownloadPath(null); setError(null);
+    try {
+      const path = await downloadAsset(asset.downloadUrl, asset.name);
+      setDownloadPath(path);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDownloading(null);
+    }
+  }, []);
+
+  if (!isTauri()) {
+    return (
+      <div className="rounded-xl border border-border bg-card/50 p-4 text-[11px] text-muted-foreground backdrop-blur">
+        Updates are only available from the Tauri desktop build.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card/50 p-4 backdrop-blur">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold tracking-tight">Updates</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Current version{currentVersion ? ` v${currentVersion.replace(/^v/, "")}` : ""}
+            {flavor ? (
+              <span className="ml-2 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">{flavor}</span>
+            ) : null}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void check()}
+          disabled={!flavor || state === "checking"}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-accent px-3 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50"
+        >
+          {state === "checking" ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <RefreshCw className="size-3.5" aria-hidden />}
+          {state === "checking" ? "Checking…" : "Check for updates"}
+        </button>
+      </div>
+
+      {state === "up-to-date" && latest ? (
+        <div className="mt-4 flex items-start gap-2 rounded-lg border border-success/30 bg-success/5 px-3 py-2 text-[11px] text-success">
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span>You're on the latest {flavor} release ({latest.tag}).</span>
+        </div>
+      ) : null}
+
+      {state === "none" ? (
+        <p className="mt-4 rounded-lg border border-border/60 px-3 py-2 text-[11px] text-muted-foreground">No releases published yet for this flavor.</p>
+      ) : null}
+
+      {state === "error" ? (
+        <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
+          <p className="flex items-start gap-2"><AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />{error ?? "Update check failed."}</p>
+          <button type="button" onClick={() => void check()} className="mt-2 underline underline-offset-2">Retry</button>
+        </div>
+      ) : null}
+
+      {latest ? (
+        <p className="mt-3 text-[10px] text-muted-foreground">Latest available: {latest.tag}{latest.publishedAt ? ` — ${new Date(latest.publishedAt).toLocaleDateString()}` : ""}</p>
+      ) : null}
+
+      {state === "available" && latest ? (
+        <div className="mt-3 rounded-lg border border-warning/40 bg-warning/5 p-3">
+          <p className="text-xs font-semibold text-warning">New release: {latest.tag}</p>
+          {latest.name ? <p className="mt-0.5 text-[11px] font-medium">{latest.name}</p> : null}
+          {latest.body ? <p className="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap text-[11px] text-muted-foreground">{latest.body.slice(0, 240)}{latest.body.length > 240 ? "…" : ""}</p> : null}
+          <div className="mt-3 divide-y divide-border/60 rounded-lg border border-border/60">
+            {latest.assets.map((asset) => (
+              <div key={asset.name} className="flex items-center justify-between gap-2 px-3 py-2 text-[11px]">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{asset.name}</p>
+                  <p className="tabular-nums text-muted-foreground">{formatBytes(asset.size)}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void runDownload(asset)}
+                  disabled={downloading !== null}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary transition-colors hover:bg-primary/15 disabled:opacity-50"
+                >
+                  {downloading === asset.name ? <Loader2 className="size-3 animate-spin" aria-hidden /> : <Download className="size-3" aria-hidden />}
+                  {downloading === asset.name ? "Downloading…" : "Download"}
+                </button>
+              </div>
+            ))}
+            {latest.assets.length === 0 ? <p className="px-3 py-2 text-[11px] text-muted-foreground">No downloadable assets on this release.</p> : null}
+          </div>
+          {error ? <p className="mt-2 text-[11px] text-destructive">{error}</p> : null}
+          {downloadPath ? (
+            <div className="mt-3 rounded-md border border-success/30 bg-success/5 px-3 py-2 text-[11px] text-success">
+              <p className="font-medium">Saved to:</p>
+              <p className="mt-0.5 break-all font-mono text-[10px]">{downloadPath}</p>
+              <p className="mt-1 text-muted-foreground">Double-click to install (requires quitting the running app).</p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
