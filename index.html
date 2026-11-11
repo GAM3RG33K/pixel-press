@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>pixel-press — Compress like you mean it.</title>
+<meta name="description" content="Local-first video compression and project auditing desktop app. Native FFmpeg, optional on-device LLM, zero uploads, zero telemetry. MIT licensed." />
+<link rel="icon" href="./icon.svg" type="image/svg+xml" />
+<link rel="alternate icon" href="https://github.com/GAM3RG33K/pixel-press" sizes="any" />
+<link rel="canonical" href="https://gam3rgeek.github.io/pixel-press/" />
+<meta property="og:title" content="pixel-press — Compress like you mean it." />
+<meta property="og:description" content="Local-first video compression desktop app. No uploads, no telemetry, no accounts. Native FFmpeg on your machine." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://gam3rgeek.github.io/pixel-press/" />
+<meta property="og:image" content="https://gam3rgeek.github.io/pixel-press/icon.svg" />
+<meta name="theme-color" content="#0D0D12" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --bg: #0D0D12;
+  --card: #16161d;
+  --card-2: #1c1c25;
+  --line: #2a2a35;
+  --fg: #EDEAF6;
+  --muted: #8A8A93;
+  --violet: #8B5CF6;
+  --violet-hi: #A78BFA;
+  --violet-deep: #6D28D9;
+  --success: #34D399;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --sans: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 1rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+::selection { background: var(--violet); color: #0D0D12; }
+
+/* --- atmosphere: dot-matrix halftone field, brand motif --- */
+.field {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image: radial-gradient(circle, rgba(237,234,246,0.055) 1px, transparent 1.4px);
+  background-size: 26px 26px;
+  mask-image: radial-gradient(ellipse 90% 60% at 50% -5%, black 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 60% at 50% -5%, black 30%, transparent 75%);
+}
+.press-glow {
+  position: fixed; z-index: -1; top: -340px; left: 50%; transform: translateX(-50%);
+  width: 900px; height: 900px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(139,92,246,0.16) 0%, rgba(139,92,246,0.05) 42%, transparent 70%);
+  pointer-events: none;
+}
+
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+/* --- nav --- */
+nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 22px 0; border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+.brand img { width: 34px; height: 34px; }
+.brand span { font-weight: 700; font-size: 1.15rem; letter-spacing: -0.02em; color: var(--fg); }
+.brand span em { font-style: normal; color: var(--violet-hi); }
+.nav-links { display: flex; gap: 28px; align-items: center; }
+.nav-links a { color: var(--muted); text-decoration: none; font-size: 0.875rem; font-weight: 500; transition: color .18s; }
+.nav-links a:hover { color: var(--fg); }
+.nav-cta {
+  border: 1px solid var(--line); border-radius: 10px; padding: 8px 16px;
+  color: var(--fg) !important; font-family: var(--mono); font-size: 0.78rem !important;
+  transition: border-color .18s, background .18s !important;
+}
+.nav-cta:hover { border-color: var(--violet); background: rgba(139,92,246,0.12); }
+
+/* --- hero --- */
+.hero { padding: 88px 0 72px; position: relative; }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--violet-hi);
+  border: 1px solid rgba(139,92,246,0.4); border-radius: 999px;
+  padding: 6px 16px; margin-bottom: 28px;
+  background: rgba(139,92,246,0.08);
+}
+.eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); animation: blink 2.2s ease-in-out infinite; }
+@keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: 0.35 } }
+h1 {
+  font-size: clamp(3rem, 8.2vw, 5.6rem);
+  line-height: 0.98; letter-spacing: -0.035em; font-weight: 700;
+  max-width: 15ch;
+}
+h1 .line { display: block; overflow: hidden; }
+h1 .line > span { display: inline-block; animation: rise .9s cubic-bezier(.2,.7,.2,1) both; }
+h1 .line:nth-child(2) > span { animation-delay: .12s; }
+h1 .line:nth-child(3) > span { animation-delay: .24s; }
+@keyframes rise { from { transform: translateY(110%); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+h1 .accent { color: var(--violet-hi); }
+.sub {
+  margin-top: 26px; max-width: 52ch; color: var(--muted);
+  font-size: 1.075rem; line-height: 1.65; font-weight: 400;
+}
+.sub strong { color: var(--fg); font-weight: 600; }
+.ctas { display: flex; gap: 14px; margin-top: 38px; flex-wrap: wrap; }
+.btn {
+  display: inline-flex; align-items: center; gap: 10px; text-decoration: none;
+  font-family: var(--sans); font-weight: 600; font-size: 0.95rem;
+  border-radius: 12px; padding: 14px 26px; transition: transform .15s, box-shadow .2s, background .2s, border-color .2s;
+  border: 1px solid transparent; cursor: pointer;
+}
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--violet); color: #150B26; box-shadow: 0 0 0 0 rgba(139,92,246,.4); }
+.btn-primary:hover { background: var(--violet-hi); box-shadow: 0 8px 40px rgba(139,92,246,.35); transform: translateY(-2px); }
+.btn-ghost { border-color: var(--line); color: var(--fg); background: transparent; }
+.btn-ghost:hover { border-color: var(--violet); background: rgba(139,92,246,.08); transform: translateY(-2px); }
+.btn .k { font-family: var(--mono); font-size: 0.7rem; opacity: .65; }
+
+/* terminal-ish strip */
+.term {
+  margin-top: 56px; max-width: 720px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  box-shadow: 0 30px 80px rgba(0,0,0,.5);
+  animation: rise .9s .4s cubic-bezier(.2,.7,.2,1) both;
+}
+.term-bar { display: flex; gap: 7px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--card-2); }
+.term-bar i { width: 11px; height: 11px; border-radius: 50%; background: #3a3a46; }
+.term-bar i:first-child { background: #F87171; } .term-bar i:nth-child(2) { background: #FBBF24; } .term-bar i:nth-child(3) { background: #34D399; }
+.term pre { padding: 20px 22px; font-family: var(--mono); font-size: 0.8rem; line-height: 1.9; color: #C9C6D8; overflow-x: auto; }
+.term .p { color: var(--violet-hi); } .term .ok { color: var(--success); } .term .dim { color: var(--muted); }
+
+/* --- sections --- */
+section { padding: 84px 0; border-top: 1px solid var(--line); }
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 32px; margin-bottom: 40px; flex-wrap: wrap; }
+.sec-label { font-family: var(--mono); font-size: 0.7rem; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+h2 { font-size: clamp(1.6rem, 3.4vw, 2.35rem); letter-spacing: -0.025em; line-height: 1.12; font-weight: 700; }
+
+/* feature grid — asymmetric bento */
+.grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+.cell {
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+  padding: 26px; position: relative; overflow: hidden; transition: border-color .2s, transform .25s;
+}
+.cell:hover { border-color: rgba(139,92,246,.55); transform: translateY(-3px); }
+.cell h3 { font-size: 1.08rem; letter-spacing: -0.015em; margin-bottom: 8px; font-weight: 600; }
+.cell p { color: var(--muted); font-size: 0.875rem; line-height: 1.6; }
+.cell .idx { font-family: var(--mono); font-size: 0.68rem; color: var(--violet-hi); letter-spacing: .12em; display:block; margin-bottom: 14px; }
+.c-wide { grid-column: span 4; } .c-half { grid-column: span 3; } .c-third { grid-column: span 2; }
+.cell.hero-cell { background: linear-gradient(160deg, rgba(139,92,246,.16), transparent 55%), var(--card); }
+@media (max-width: 880px) { .c-wide, .c-half, .c-third { grid-column: span 6; } }
+
+/* platform table */
+.platforms { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.platforms th, .platforms td { text-align: left; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.platforms th { font-family: var(--mono); font-size: 0.68rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.platforms td:first-child { font-weight: 600; }
+.platforms code { font-family: var(--mono); font-size: 0.78rem; color: var(--violet-hi); background: rgba(139,92,246,.1); border-radius: 6px; padding: 2px 8px; }
+.platforms tr:last-child td { border-bottom: none; }
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+.note { color: var(--muted); font-size: 0.8rem; margin-top: 14px; font-family: var(--mono); }
+
+/* download / CTA band */
+.band {
+  text-align: center; padding: 90px 24px;
+  background: radial-gradient(ellipse 70% 90% at 50% 120%, rgba(139,92,246,.28), transparent 65%);
+}
+.band h2 { font-size: clamp(2rem, 5vw, 3.4rem); }
+.band p { color: var(--muted); margin: 18px auto 34px; max-width: 46ch; }
+
+footer { border-top: 1px solid var(--line); padding: 34px 0 44px; }
+.foot { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; font-size: 0.8rem; color: var(--muted); }
+.foot a { color: var(--violet-hi); text-decoration: none; }
+.foot a:hover { text-decoration: underline; }
+.foot .mono { font-family: var(--mono); font-size: 0.72rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  html { scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+<div class="field"></div>
+<div class="press-glow"></div>
+
+<div class="wrap">
+  <nav>
+    <a class="brand" href="./">
+      <img src="./icon.svg" alt="pixel-press mark" width="34" height="34" />
+      <span>pixel<em>-</em>press</span>
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#platforms">Platforms</a>
+      <a href="https://github.com/GAM3RG33K/pixel-press" class="nav-cta">github ↗</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="eyebrow"><span class="dot"></span> Local-first · MIT · v0.1</div>
+    <h1>
+      <span class="line"><span>Compress</span></span>
+      <span class="line"><span>like you</span></span>
+      <span class="line"><span class="accent">mean it.</span></span>
+    </h1>
+    <p class="sub">pixel-press is a <strong>local-only desktop app</strong> that shrinks your videos with native FFmpeg and an optional on-device LLM. Nothing uploads. No accounts, no telemetry, no cloud. The four upstream workflows — <strong>compress, compare, audit, scan&nbsp;&amp;&nbsp;optimize</strong> — as one quiet workbench.</p>
+    <div class="ctas">
+      <a class="btn btn-primary" href="https://github.com/GAM3RG33K/pixel-press/releases/latest">Download latest <span class="k">.dmg / .AppImage</span></a>
+      <a class="btn btn-ghost" href="https://github.com/GAM3RG33K/pixel-press">View source</a>
+    </div>
+
+    <div class="term" aria-hidden="true">
+      <div class="term-bar"><i></i><i></i><i></i></div>
+      <pre><span class="p">$</span> pixel-press compress hero-loop.mov
+<span class="dim">probe   </span>ffprobe → 1920×1080 · 24fps · h264 · 48.2 MB
+<span class="dim">plan    </span>rule-engine → libx265 CRF 28 · aac 128k
+<span class="dim">encode  </span>native ffmpeg ████████████████░░ 84% · 00:12
+<span class="ok">done    </span>hero-loop_optimized.mp4 · 9.7 MB <span class="dim">(−80%)</span></pre>
+    </div>
+  </header>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <div class="sec-label">01 — The Workbench</div>
+        <h2>Four tools.<br />Zero cloud.</h2>
+      </div>
+      <p style="max-width:38ch;color:var(--muted);font-size:.9rem">Every byte processed on your machine. Rule engine always works — the LLM is opt-in, offline, and ~210 MB once.</p>
+    </div>
+    <div class="grid">
+      <div class="cell c-wide hero-cell">
+        <span class="idx">S.01</span>
+        <h3>Smart Compress</h3>
+        <p>Drop any video. Native ffprobe reads it, the rule engine (or the on-device LLM) picks codec and CRF, native ffmpeg encodes. Natural-language intent bar included; codec fallbacks are loud, never silent.</p>
+      </div>
+      <div class="cell c-half">
+        <span class="idx">C.02</span>
+        <h3>Visual &amp; Metric Compare</h3>
+        <p>Split-screen slider over synchronized samples. Size, SSIM, bitrate deltas across anchor variants — pick the one that wins.</p>
+      </div>
+      <div class="cell c-half">
+        <span class="idx">A.03</span>
+        <h3>Project Video Auditor</h3>
+        <p>Point at your project folder. Flags missing <code style="font-family:var(--mono)">muted</code> / <code style="font-family:var(--mono)">playsinline</code> / <code style="font-family:var(--mono)">preload</code> / poster, oversized dimensions — tag and line for everything.</p>
+      </div>
+      <div class="cell c-half">
+        <span class="idx">O.04</span>
+        <h3>Scan &amp; Optimize</h3>
+        <p>Batch-encode every flagged video in place, generate updated HTML/JSX snippets, export a zip. One pass, whole project.</p>
+      </div>
+      <div class="cell c-half hero-cell">
+        <span class="idx">L.05</span>
+        <h3>Local AI — your machine only</h3>
+        <p>Optional SmolLM2-360M (Apache-2.0, ~210 MB GGUF) via llama.cpp. Plans encodes and explains choices. If it’s not installed, the rule engine carries the whole app. Nothing ever leaves the device.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="platforms">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <div class="sec-label">02 — Platforms</div>
+        <h2>Pick your metal.</h2>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table class="platforms">
+        <thead><tr><th>Platform</th><th>Build</th><th>Package</th></tr></thead>
+        <tbody>
+          <tr><td>macOS Apple Silicon</td><td><code>aarch64-apple-darwin</code></td><td><code>.dmg</code></td></tr>
+          <tr><td>macOS Intel</td><td><code>x86_64-apple-darwin</code></td><td><code>.dmg</code></td></tr>
+          <tr><td>Linux x86_64</td><td><code>ubuntu-22.04</code></td><td><code>.AppImage</code> · <code>.deb</code></td></tr>
+          <tr><td>Linux ARM64</td><td><code>ubuntu-22.04-arm</code></td><td><code>.AppImage</code> · <code>.deb</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Windows is not shipped yet (release-build diagnosis pending). macOS builds are ad-hoc signed — first launch: right-click → Open. In-app updates after that need no Gatekeeper dance.</p>
+  </div>
+</section>
+
+<section class="band">
+  <div class="wrap">
+    <div class="sec-label">03 — Get it</div>
+    <h2>Your videos.<br />Your machine.<br /><span class="accent" style="color:var(--violet-hi)">Your files, tiny.</span></h2>
+    <p>Download the latest release. First launch fetches FFmpeg/FFprobe (SHA-256-verified) and optionally the LLM. After that: fully offline, forever.</p>
+    <a class="btn btn-primary" href="https://github.com/GAM3RG33K/pixel-press/releases/latest" style="font-size:1.05rem;padding:16px 34px">Download pixel-press →</a>
+    <p style="margin-top:18px;font-family:var(--mono);font-size:.72rem;color:var(--muted)">v0.1.x · prereleases tagged <code>-dev</code> install side-by-side as “pixel-press Dev”</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <div>
+      <div class="brand" style="margin-bottom:10px"><img src="./icon.svg" alt="" width="26" height="26" /><span style="font-size:.95rem">pixel<em>-</em>press</span></div>
+      <div class="mono">MIT · FFmpeg GPL/LGPL (download-time) · LLM Apache-2.0</div>
+    </div>
+    <div style="text-align:right">
+      <a href="https://github.com/GAM3RG33K/pixel-press">GitHub</a><br />
+      <a href="https://github.com/GAM3RG33K/pixel-press/releases">Releases</a> ·
+      <a href="https://github.com/GAM3RG33K/pixel-press/blob/main/THIRD_PARTY_NOTICES.md">Notices</a><br />
+      <span class="mono">no uploads · no telemetry · no accounts</span>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
