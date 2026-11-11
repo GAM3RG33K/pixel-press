@@ -1,5 +1,5 @@
 import { StatusPill } from "@/features/status/StatusPill";
-import { EngineDrawer } from "@/components/engine-drawer";
+import { SettingsDrawer } from "@/components/settings-drawer";
 
 export function Header() {
   return (
@@ -23,7 +23,7 @@ export function Header() {
 
         <div className="flex shrink-0 items-center gap-2">
           <StatusPill />
-          <EngineDrawer />
+          <SettingsDrawer />
         </div>
       </div>
     </header>

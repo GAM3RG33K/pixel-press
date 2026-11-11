@@ -137,3 +137,14 @@ export async function planWithNativeLlm(
     unlisten?.();
   }
 }
+
+export interface CachePart { label: string; bytes: number; }
+export interface CacheStats { total_bytes: number; parts: CachePart[]; }
+export async function cacheStats(): Promise<CacheStats> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<CacheStats>("cache_stats");
+}
+export async function clearCache(): Promise<number> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<number>("clear_cache");
+}
