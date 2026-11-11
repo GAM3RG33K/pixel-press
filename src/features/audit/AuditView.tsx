@@ -16,6 +16,7 @@ import {
 import { diag, captureError } from "@/lib/diagnostics";
 import { registerTask, updateTask, completeTask, failTask, cancelTask } from "@/lib/tasks/registry";
 import { cn } from "@/lib/utils";
+import { Marquee } from "@/components/marquee";
 
 interface ScannedFile {
   filePath: string;
@@ -223,7 +224,7 @@ export function AuditView({ onSendToOptimize }: AuditViewProps) {
                   <details key={fileReport.filePath} className="group border-b border-border/40 last:border-0">
                     <summary className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-accent/40">
                       <FileCode2 className="size-4 text-info" aria-hidden />
-                      <span className="min-w-0 flex-1 truncate font-mono text-xs">{fileReport.filePath}</span>
+                      <Marquee title={fileReport.filePath} className="flex-1 font-mono text-xs">{fileReport.filePath}</Marquee>
                       <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                         <CheckCircle2 className="size-3.5 text-success" aria-hidden />
                         {fileReport.videoTags} video(s)

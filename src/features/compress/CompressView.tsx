@@ -15,6 +15,7 @@ import type { EncoderCapabilities, VideoMetadata } from "@/types/media";
 import { Button } from "@/components/ui/button";
 import { DropZone } from "@/components/DropZone";
 import { StageCard } from "@/components/stage-card";
+import { Marquee } from "@/components/marquee";
 import { getFfmpegService } from "@/lib/ffmpeg/service";
 import {
   isNativeEngine,
@@ -406,7 +407,7 @@ export function CompressView() {
             <div className="min-w-0">
               <p className="flex items-center gap-2 font-medium">
                 <FileVideo className="size-4 text-primary" aria-hidden />
-                <span className="max-w-[340px] truncate">{file.name}</span>
+                <Marquee title={file.name} className="max-w-[340px]">{file.name}</Marquee>
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {(file.size / 1024 / 1024).toFixed(1)} MB
@@ -548,7 +549,7 @@ export function CompressView() {
                   <li key={output.fileName} className="flex flex-wrap items-center gap-3 px-4 py-3">
                     <FileVideo className={cn("size-5", output.container === "webm" ? "text-success" : "text-info")} aria-hidden />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-mono text-xs">{output.fileName}</p>
+                      <Marquee title={output.fileName} className="font-mono text-xs">{output.fileName}</Marquee>
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
                         {(output.sizeBytes / 1024 / 1024).toFixed(1)} MB
                         {saved !== null && saved >= 0 ? ` · ${saved}% smaller` : ""} · {Math.round(output.durationMs / 1000)}s encode

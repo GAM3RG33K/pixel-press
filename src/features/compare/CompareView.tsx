@@ -14,6 +14,7 @@ import { DropZone } from "@/components/DropZone";
 import { getFfmpegService } from "@/lib/ffmpeg/service";
 import { isNativeEngine, nativeCapabilities, nativeStageInput, nativeProbeStaged, nativeEncodeFile, nativeOutPath, nativeReadAndRemove, type NativeStagedInput } from "@/lib/ffmpeg/native-engine";
 import { StageCard, type StageProgressState } from "@/components/stage-card";
+import { Marquee } from "@/components/marquee";
 import { useAiMode } from "@/lib/ai/use-ai-mode";
 import { resolvePlan } from "@/lib/ai/plan";
 import { diag, captureError } from "@/lib/diagnostics";
@@ -279,7 +280,7 @@ export function CompareView() {
             <div className="min-w-0">
               <p className="flex items-center gap-2 font-medium">
                 <FileVideo className="size-4 text-primary" aria-hidden />
-                <span className="max-w-[360px] truncate">{file.name}</span>
+                <Marquee title={file.name} className="max-w-[360px]">{file.name}</Marquee>
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {(file.size / 1024 / 1024).toFixed(1)} MB

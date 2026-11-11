@@ -22,6 +22,7 @@ import {
   type TaskWorkbench,
 } from "@/lib/tasks/registry";
 import { cn } from "@/lib/utils";
+import { Marquee } from "@/components/marquee";
 
 const WORKBENCH_ICON: Record<TaskWorkbench, typeof Zap> = {
   compress: Zap,
@@ -82,7 +83,7 @@ function Row({
         aria-label={jumpable ? `Go to ${task.workbench} workbench` : undefined}
         title={jumpable ? "Switch to this pane" : undefined}
       >
-        <span className="block truncate text-xs font-medium text-foreground">{task.label}</span>
+        <Marquee title={task.label} className="text-xs font-medium text-foreground">{task.label}</Marquee>
         <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
           {done
             ? "Done"

@@ -1,4 +1,5 @@
 import { Loader2 } from "lucide-react";
+import { Marquee } from "@/components/marquee";
 
 /** Progress + ETA card for the staged-read phase ("Reading 1.4 GB… ~11s left"). */
 export interface StageProgressState {
@@ -27,9 +28,9 @@ export function StageCard({
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="flex min-w-0 items-center gap-2 text-sm">
           <Loader2 className="size-4 shrink-0 animate-spin text-primary" aria-hidden />
-          <span className="truncate font-medium">
+          <Marquee title={file.name} className="font-medium">
             {stageProgress ? `Reading ${file.name}` : `Analyzing ${file.name}`}
-          </span>
+          </Marquee>
         </p>
         {stageProgress ? (
           <p className="text-xs tabular-nums text-muted-foreground">

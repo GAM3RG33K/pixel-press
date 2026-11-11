@@ -19,6 +19,7 @@ import { useAiMode } from "@/lib/ai/use-ai-mode";
 import { resolvePlan } from "@/lib/ai/plan";
 import { diag, captureError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
+import { Marquee } from "@/components/marquee";
 import { buildVideoSnippet } from "@/lib/snippet";
 import { registerTask, updateTask, completeTask, failTask, cancelTask } from "@/lib/tasks/registry";
 
@@ -610,9 +611,7 @@ export function OptimizeView() {
           {candidates.length > 0 ? (
             <p className="text-xs text-muted-foreground">
               {pickedDir ? (
-                <span className="mr-2 block max-w-[520px] truncate font-mono text-[10px] text-muted-foreground/80" title={pickedDir}>
-                  {pickedDir}
-                </span>
+                <Marquee title={pickedDir} className="mr-2 max-w-[520px] font-mono text-[10px] text-muted-foreground/80">{pickedDir}</Marquee>
               ) : null}
               {candidates.length} video(s) found · {(totalBytes / 1024 / 1024).toFixed(1)} MB total
             </p>
@@ -689,7 +688,7 @@ export function OptimizeView() {
               {candidates.map((candidate, index) => (
                 <li key={candidate.filePath} className="flex flex-wrap items-center gap-3 px-4 py-3 text-xs">
                   <span className="flex-1 min-w-0">
-                    <p className="truncate font-mono text-[11px]">{candidate.filePath}</p>
+                    <Marquee title={candidate.filePath} className="font-mono text-[11px]">{candidate.filePath}</Marquee>
                     <p className="mt-0.5 tabular-nums text-muted-foreground">{(candidate.size / 1024 / 1024).toFixed(1)} MB</p>
                     {candidate.status === "encoding" ? (
                       <span className="mt-1.5 block">
