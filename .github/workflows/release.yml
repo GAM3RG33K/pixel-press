@@ -80,11 +80,18 @@ jobs:
       - name: Install bun
         run: npm install -g bun@1.4.4
 
+      - name: Cache bun install store
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-store-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-store-${{ runner.os }}-
+
       - name: Install system dependencies (Ubuntu)
         if: startsWith(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils mold
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -96,6 +103,18 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
+          cache-on-failure: true
+
+      # Dedicated cache for the llama.cpp cmake build tree (the single biggest
+      # compile in the pipeline). Independent of rust-cache's keying; restored
+      # on any key prefix hit.
+      - name: Cache llama.cpp cmake build
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/target/llama-cmake-cache
+          key: llama-cmake-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            llama-cmake-${{ runner.os }}-
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
@@ -122,6 +141,8 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # mold on Linux slashes final link time (~30–60s per leg).
+          RUSTFLAGS: ${{ startsWith(matrix.platform, 'ubuntu') && '-C link-arg=-fuse-ld=mold' || '' }}
         with:
           # Only a tag push publishes. On workflow_dispatch these are empty,
           # which tauri-action treats as "build only, upload nothing".
