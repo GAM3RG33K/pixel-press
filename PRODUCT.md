@@ -29,10 +29,13 @@ Local-first and fully local after first install — a native desktop app where F
 
 ## Capabilities and Constraints
 
-- Native encode/probe via downloaded (SHA-256-verified) ffmpeg/ffprobe; no browser sandbox limits.
+- Native encode/probe via downloaded (SHA-256-verified) ffmpeg/ffprobe; no browser sandbox limits. Tauri native drops probe the real file path and encode in place (source untouched); huge files (>2 GB) get the same treatment — nothing is staged in memory before probe.
 - Deterministic rule engine always available; optional local SmolLM2-360M (Apache-2.0) via native llama.cpp for intent → plan, opt-in from Settings → Local AI.
+- A bottom-center tray surfaces every in-flight task (encodes, audit scans, first-launch downloads) with progress + cancel, and jump-to-tab; switching tabs never cancels running work.
+- Long filenames render as overflow-aware marquee (pause on hover/focus-within; `prefers-reduced-motion` falls back to ellipsis).
 - Three workbenches for conversion: Compress (intent → plan → encode), Compare (same source, three quality anchors), Optimize (folder batch; single file → `name_optimized.ext` next to source, bulk → mirrored `pixel-pressed-<timestamp>/` folder).
 - Audit: local regex scan of HTML/JSX/TSX/Vue/Svelte/Astro for video-related issues; no network.
+- Consolidated `$APPDATA/cache` for all staging/probe/encode temp artifacts; Settings drawer shows live usage with a clear button (ffmpeg tools and LLM weights untouched).
 - GPL/LGPL FFmpeg and Apache-2.0 LLM weights are first-run downloads, not bundled; notices ship (see THIRD_PARTY_NOTICES.md).
 - Platform targets (distribution): GitHub Releases on tag push (`v*.*.*`) — macOS Apple Silicon + Intel, Linux x64/ARM64 (4 legs). `-dev`-suffixed tags ship the development flavor ("pixel-press Dev", `com.pixelpress.app.dev`) as a draft prerelease, installable alongside production. Windows not shipped (x64 release leg failing — excluded pending diagnosis; ARM64 paused: native LLM backend does not link on MSVC ARM64). macOS builds are ad-hoc signed (unsigned distribution — no Developer ID yet).
 - No bundling of FFmpeg or LLM weights in the installer; installer stays ~15–30MB.

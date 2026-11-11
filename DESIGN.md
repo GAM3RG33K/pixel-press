@@ -135,7 +135,10 @@ While the app still loads Inter, treat it as temporary scaffolding; new screens 
 - **Container**: `max-w-6xl` app frame; header 56px sticky; single-column workbench per tab, two-column detail at `lg:` (workbench + 320px aside).
 - **Grid**: 12px base rhythm; 4px spacing scale tokens (xs 4 / sm 8 / md 16 / lg 24 / xl 32).
 - **Comfortable density**: 44px minimum interactive targets; generous padding; scroll only the queue/table regions, never the page chrome.
-- **Header**: brand left (mark + wordmark), status pill right; tabs as a segmented row below.
+- **Header**: brand left (mark + wordmark), status pill + Settings button (gear icon) right; tabs as a segmented row below.
+- **Tasks tray**: fixed bottom-center pill `z-40`, `backdrop-blur`; state visible only while ≥1 job is running. Collapsed: spinner + "N task(s) running" + chevron toggle; expanded: scrollable popover with icon + label + stage/% + elapsed + cancel. Click row → jump to the owning workbench.
+- **Settings drawer** (right side, `z-50`, 420px max): sidebar with Engine | Cache sections. Engine = diagnostics + Local AI card; Cache = live `$APPDATA/cache` usage, per-part breakdown, "Clear cache" with `window.confirm`.
+- **Marquee**: overflow-aware filename wrapper — duplicates content and cycles `translateX` only when it overflows; pauses on `:hover`/`:focus-within`; `prefers-reduced-motion` falls back to ellipsis; siblings never shrink (`min-w-0`).
 - Settings/utility screens follow the same card layout: one card per concern, label above control.
 
 ## Elevation & Depth
@@ -143,7 +146,7 @@ While the app still loads Inter, treat it as temporary scaffolding; new screens 
 Flat + tonal layering, not shadows:
 
 - Layering via `card` on `background` (one step of tonal elevation); `border` (`oklch(0.32 0.02 275)`) delineates cards and dividers.
-- **No glassmorphism**, no backdrop-filter blur as decoration (header blur is the one incumbent exception, kept only while it earns contrast).
+- **No glassmorphism**, no backdrop-filter blur as decoration (header + tasks-tray use `backdrop-blur` as incumbents — keep it minimal there and nowhere else).
 - No gradient text; no neon glows; no inner glows. Progress bars flatten to `primary` at 100%.
 - When depth is needed, step the tone (background → card → muted → secondary), never shadow opacity.
 
@@ -158,6 +161,8 @@ Flat + tonal layering, not shadows:
 
 - **button-primary** — solid `primary`, `primary-foreground` text, `md` radius; hover lifts lightness slightly (`color-mix` toward white 6%); disabled at 40% opacity; loading state shows spinner inline.
 - **button-outline** — transparent with `border`; hover raises `muted`; used for secondary actions (Copy, Download all).
+- **tasks-tray** — bottom-center fixed pill/popover; shown only when ≥1 job is running; `role="status"`/`aria-live="polite"`; expandable rows with `max-h-64` scroll.
+- **marquee** — overflow-aware inline animation for filenames; `prefers-reduced-motion` → static ellipsis; sibling text always reserves width.
 - **button-ghost** — borderless text/icon button; danger variant for Clear/Remove.
 - **card** — `card` surface, 1px `border`, `lg` radius, 16px padding; the universal container.
 - **dropzone** — dashed `border`, `xl` radius, centered content; `dragging` state tints `primary/10`; `busy` swaps icon for spinner and shows "Reading file…"; errors render inline with destructive styling.
