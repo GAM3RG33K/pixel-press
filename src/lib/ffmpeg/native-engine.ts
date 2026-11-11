@@ -103,6 +103,41 @@ export function nativeOutPath(staged: NativeStagedInput, outputFileName: string)
   return `${staged.dir}${sep}${sanitizeName(outputFileName)}`;
 }
 
+/** Absolute-path probe (native drop) — no copy, full duration from headers. */
+export async function nativeProbePath(
+  path: string,
+  fileName: string,
+  fileSize: number,
+): Promise<{ metadata: VideoMetadata; raw: string }> {
+  const raw = await tauriApi.ffprobeJson(path);
+  const metadata = parseFfprobeJson(raw, fileName, fileSize);
+  return { metadata, raw };
+}
+
+/** Huge-file slice probe — ffprobes only the first bytes of a browser File. */
+export async function tryProbeSlice(
+  slice: Blob,
+  fileName: string,
+  fileSize: number,
+): Promise<{ metadata: VideoMetadata; raw: string } | null> {
+  try {
+    const bytes = new Uint8Array(await slice.arrayBuffer());
+    const raw = await tauriApi.ffprobeBytes(bytes, fileName);
+    return { metadata: parseFfprobeJson(raw, fileName, fileSize), raw };
+  } catch {
+    return null;
+  }
+}
+
+/** Output path inside a fresh cache temp dir (no staged input). Async — uses encode_paths. */
+export async function nativeOutCachePath(outputFileName: string): Promise<string> {
+  const paths = await invoke<{ input_path: string; output_path: string }>("encode_paths", {
+    inputName: "source",
+    outputName: sanitizeName(outputFileName),
+  });
+  return paths.output_path;
+}
+
 /** Probe a staged temp file with native ffprobe (path-based — no bytes through IPC). */
 export async function nativeProbeStaged(
   staged: NativeStagedInput,

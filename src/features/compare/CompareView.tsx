@@ -12,7 +12,8 @@ import type { EncoderCapabilities, VideoMetadata } from "@/types/media";
 import { Button } from "@/components/ui/button";
 import { DropZone } from "@/components/DropZone";
 import { getFfmpegService } from "@/lib/ffmpeg/service";
-import { isNativeEngine, nativeCapabilities, nativeStageInput, nativeProbeStaged, nativeEncodeFile, nativeOutPath, nativeReadAndRemove, type NativeStagedInput } from "@/lib/ffmpeg/native-engine";
+import { isNativeEngine, nativeCapabilities, nativeStageInput, nativeProbeStaged, nativeProbePath, tryProbeSlice, nativeEncodeFile, nativeOutPath, nativeOutCachePath, nativeReadAndRemove, type NativeStagedInput } from "@/lib/ffmpeg/native-engine";
+import { isHugeFile } from "@/lib/ffmpeg/huge-file";
 import { StageCard, type StageProgressState } from "@/components/stage-card";
 import { Marquee } from "@/components/marquee";
 import { useAiMode } from "@/lib/ai/use-ai-mode";
@@ -49,6 +50,8 @@ export function CompareView() {
   const abortRef = useRef<AbortController | null>(null);
   const [stageProgress, setStageProgress] = useState<StageProgressState | null>(null);
   const stagedRef = useRef<NativeStagedInput | null>(null);
+  const sourcePathRef = useRef<string | null>(null);
+  const sourceSizeRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (metadata) {
@@ -69,8 +72,10 @@ export function CompareView() {
     }
   }, [metadata, aiMode]);
 
-  const analyzeFile = useCallback(async (incoming: File) => {
+  const analyzeFile = useCallback(async (incoming: File, path?: string, sizeBytes?: number) => {
     setFile(incoming);
+    sourcePathRef.current = null;
+    sourceSizeRef.current = null;
     setMetadata(null);
     setResults([]);
     setStatus("probing");
@@ -82,6 +87,20 @@ export function CompareView() {
           void import("@tauri-apps/api/core").then((m) => m.invoke("cleanup_encode_dir", { path: oldDir }));
           stagedRef.current = null;
         }
+        const effectiveSize = sizeBytes ?? incoming.size;
+        if (path) {
+          sourcePathRef.current = path;
+          sourceSizeRef.current = effectiveSize;
+          const result = await nativeProbePath(path, incoming.name, effectiveSize);
+          setMetadata(result.metadata);
+          setStageProgress(null);
+          setStatus("ready");
+          return;
+        }
+        let sliced: { metadata: import("@/types/media").VideoMetadata; raw: string } | null = null;
+        if (isHugeFile(incoming)) {
+          sliced = await tryProbeSlice(incoming.slice(0, 40 * 1024 * 1024), incoming.name, incoming.size);
+        }
         const stagingStarted = performance.now();
         setStageProgress({ copied: 0, total: incoming.size, startedAt: stagingStarted });
         const staged = await nativeStageInput(
@@ -90,7 +109,7 @@ export function CompareView() {
           (copied, total) => setStageProgress({ copied, total, startedAt: stagingStarted }),
         );
         stagedRef.current = staged;
-        const result = await nativeProbeStaged(staged, incoming.name, incoming.size);
+        const result = sliced ?? (await nativeProbeStaged(staged, incoming.name, incoming.size));
         setMetadata(result.metadata);
         setStageProgress(null);
         setStatus("ready");
@@ -177,11 +196,15 @@ export function CompareView() {
           log: string[];
         };
         if (useNative) {
-          const staged = stagedRef.current ?? (await nativeStageInput(file, outName));
-          if (!stagedRef.current) stagedRef.current = staged;
-          const outPath = nativeOutPath(staged, outName);
+          let staged = stagedRef.current;
+          if (!sourcePathRef.current && !staged) {
+            staged = await nativeStageInput(file, outName);
+            stagedRef.current = staged;
+          }
+          const inputPath = sourcePathRef.current ?? staged!.tmpPath;
+          const outPath = staged ? nativeOutPath(staged, outName) : await nativeOutCachePath(outName);
           const done = await nativeEncodeFile({
-            inputPath: staged.tmpPath,
+            inputPath,
             outputPath: outPath,
             codec: variant.codec,
             crf: variant.crf,
@@ -192,6 +215,10 @@ export function CompareView() {
             onProgress,
           });
           const bytes = await nativeReadAndRemove(outPath);
+          if (!staged) {
+            const outDir = outPath.replace(/[/\\][^/\\]+$/, "");
+            void import("@tauri-apps/api/core").then((m) => m.invoke("cleanup_encode_dir", { path: outDir }));
+          }
           encoded = { data: bytes, outputFileName: outName, durationMs: done.durationMs, sizeBytes: done.sizeBytes, log: done.log };
         } else {
           const wasmResult = await service!.encode({
@@ -283,7 +310,7 @@ export function CompareView() {
                 <Marquee title={file.name} className="max-w-[360px]">{file.name}</Marquee>
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {(file.size / 1024 / 1024).toFixed(1)} MB
+                {((sourceSizeRef.current ?? file.size) / 1024 / 1024).toFixed(1)} MB
                 {metadata ? ` · ${metadata.width}×${metadata.height} · ${metadata.duration.toFixed(1)}s` : ""}
               </p>
             </div>
@@ -293,6 +320,8 @@ export function CompareView() {
                 void import("@tauri-apps/api/core").then((m) => m.invoke("cleanup_encode_dir", { path: dir }));
                 stagedRef.current = null;
               }
+              sourcePathRef.current = null;
+              sourceSizeRef.current = null;
               setFile(null); setMetadata(null); setResults([]); setStatus("idle");
             }}>
               <Trash2 className="size-4" aria-hidden />

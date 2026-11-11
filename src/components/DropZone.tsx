@@ -31,7 +31,7 @@ export function DropZone({
   disabled,
   compact = false,
 }: {
-  onFile: (file: File) => void;
+  onFile: (file: File, path?: string, sizeBytes?: number) => void;
   disabled?: boolean;
   compact?: boolean;
 }) {
@@ -109,18 +109,21 @@ export function DropZone({
             // Grant fs scope read access to just this dropped file (it's outside $APPDATA).
             const { invoke } = await import("@tauri-apps/api/core");
             await invoke("allow_file_path", { path: videoPath });
-            const { readFile } = await import("@tauri-apps/plugin-fs");
-            const bytes = await readFile(videoPath);
             const name = videoPath.split(/[/\\]/).pop() ?? "video.mp4";
-            diag.info("dropzone", "dropped file read into memory", {
-              name,
-              bytes: bytes.byteLength,
-            });
-            onFile(new File([bytes.buffer as ArrayBuffer], name, { type: mimeFromName(name) }));
+            let sizeBytes = 0;
+            try {
+              const stat = await (await import("@tauri-apps/plugin-fs")).stat?.(videoPath);
+              sizeBytes = Number(stat?.size ?? 0);
+            } catch {
+              sizeBytes = 0;
+            }
+            const placeholder = new File([], name, { type: mimeFromName(name) });
+            diag.info("dropzone", "native drop source registered", { name, sizeBytes, path: videoPath });
+            onFile(placeholder, videoPath, sizeBytes);
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            diag.error("dropzone", `failed to read dropped file ${videoPath}: ${message}`);
-            setNotice(`Couldn't read the dropped file: ${message}`);
+            diag.error("dropzone", `failed to handle drop ${videoPath}: ${message}`);
+            setNotice(`Couldn't open the dropped file: ${message}`);
             window.setTimeout(() => setNotice(null), 5000);
           } finally {
             setBusy(false);

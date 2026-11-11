@@ -24,9 +24,13 @@ import {
   nativeCapabilities,
   nativeEncodeFile,
   nativeOutPath,
+  nativeOutCachePath,
   nativeReadAndRemove,
+  nativeProbePath,
+  tryProbeSlice,
   type NativeStagedInput,
 } from "@/lib/ffmpeg/native-engine";
+import { isHugeFile } from "@/lib/ffmpeg/huge-file";
 import {
   buildVideoSnippet,
   buildPosterPath,
@@ -71,6 +75,9 @@ export function CompressView() {
   const [stageProgress, setStageProgress] = useState<import("@/components/stage-card").StageProgressState | null>(null);
   /** Temp copy of the selected file, staged once per selection. */
   const stagedRef = useRef<NativeStagedInput | null>(null);
+  /** Absolute source path when the file came from a native Tauri drop (never modified). */
+  const sourcePathRef = useRef<string | null>(null);
+  const sourceSizeRef = useRef<number | null>(null);
 
   const currentPlan = useMemo(() => buildVariantPlan(intentText, metadata), [intentText, metadata]);
   const aiMode = useAiMode();
@@ -132,10 +139,12 @@ export function CompressView() {
     }
   }, []);
 
-  const analyzeFile = useCallback(async (incoming: File) => {
+  const analyzeFile = useCallback(async (incoming: File, path?: string, sizeBytes?: number) => {
     abortRef.current?.abort();
     abortRef.current = new AbortController();
     setFile(incoming);
+    sourcePathRef.current = null;
+    sourceSizeRef.current = null;
     setOutputs([]);
     setError(null);
     setProgress(0);
@@ -151,6 +160,24 @@ export function CompressView() {
           void import("@tauri-apps/api/core").then((m) => m.invoke("cleanup_encode_dir", { path: oldDir }));
           stagedRef.current = null;
         }
+        const effectiveSize = sizeBytes ?? incoming.size;
+        if (path) {
+          // Native drop: probe the real path directly — no copy, source untouched.
+          sourcePathRef.current = path;
+          sourceSizeRef.current = effectiveSize;
+          metadataResult = await nativeProbePath(path, incoming.name, effectiveSize);
+          setStageProgress(null);
+          setCapabilities(await nativeCapabilities().catch(() => null));
+          setMetadata(metadataResult.metadata);
+          setStatus("ready");
+          return;
+        }
+        // Browser pick: huge files get a slice probe from the first 40 MB.
+        let sliced: { metadata: VideoMetadata; raw: string } | null = null;
+        if (isHugeFile(incoming)) {
+          const slice = incoming.slice(0, 40 * 1024 * 1024);
+          sliced = await tryProbeSlice(slice, incoming.name, incoming.size);
+        }
         const stagingStarted = performance.now();
         setStageProgress({ copied: 0, total: incoming.size, startedAt: stagingStarted });
         const staged = await nativeStageInput(
@@ -159,7 +186,7 @@ export function CompressView() {
           (copied, total) => setStageProgress({ copied, total, startedAt: stagingStarted }),
         );
         stagedRef.current = staged;
-        metadataResult = await nativeProbeStaged(staged, incoming.name, incoming.size);
+        metadataResult = sliced ?? (await nativeProbeStaged(staged, incoming.name, incoming.size));
         setCapabilities(await nativeCapabilities().catch(() => null));
       } else {
         const service = getFfmpegService();
@@ -226,11 +253,15 @@ export function CompressView() {
 
         let encodedResult;
         if (useNative) {
-          const staged = stagedRef.current ?? (await nativeStageInput(file, outName));
-          if (!stagedRef.current) stagedRef.current = staged;
-          const outPath = nativeOutPath(staged, outName);
+          let staged = stagedRef.current;
+          if (!sourcePathRef.current && !staged) {
+            staged = await nativeStageInput(file, outName);
+            stagedRef.current = staged;
+          }
+          const inputPath = sourcePathRef.current ?? staged!.tmpPath;
+          const outPath = staged ? nativeOutPath(staged, outName) : await nativeOutCachePath(outName);
           const done = await nativeEncodeFile({
-            inputPath: staged.tmpPath,
+            inputPath,
             outputPath: outPath,
             codec: variant.codec,
             crf: variant.crf,
@@ -250,6 +281,10 @@ export function CompressView() {
             signal: abortRef.current.signal,
           });
           const bytes = await nativeReadAndRemove(outPath);
+          if (!staged) {
+            const outDir = outPath.replace(/[/\\][^/\\]+$/, "");
+            void import("@tauri-apps/api/core").then((m) => m.invoke("cleanup_encode_dir", { path: outDir }));
+          }
           encodedResult = {
             data: bytes,
             outputFileName: outName,
@@ -410,7 +445,7 @@ export function CompressView() {
                 <Marquee title={file.name} className="max-w-[340px]">{file.name}</Marquee>
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {(file.size / 1024 / 1024).toFixed(1)} MB
+                {((sourceSizeRef.current ?? file.size) / 1024 / 1024).toFixed(1)} MB
                 {metadata ? ` · ${metadata.width}×${metadata.height} · ${metadata.duration.toFixed(1)}s · ${metadata.videoCodec}${metadata.hasAudio ? " · audio" : ""}` : " · probing…"}
               </p>
             </div>
@@ -420,6 +455,8 @@ export function CompressView() {
                 void import("@tauri-apps/api/core").then((m) => m.invoke("cleanup_encode_dir", { path: dir }));
                 stagedRef.current = null;
               }
+              sourcePathRef.current = null;
+              sourceSizeRef.current = null;
               setFile(null); setMetadata(null); setOutputs([]); setStatus("idle");
             }}>
               <Trash2 className="size-4" aria-hidden />
