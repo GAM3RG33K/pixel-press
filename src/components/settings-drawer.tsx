@@ -54,7 +54,7 @@ export function SettingsDrawer() {
             className="absolute inset-0 bg-black/50"
             onClick={() => setOpen(false)}
           />
-          <aside className="relative flex h-full w-full max-w-[420px] flex-col overflow-hidden border-l border-border bg-background">
+          <aside className="relative flex h-full w-full max-w-[456px] flex-col overflow-hidden border-l border-border bg-background">
             <div className="flex h-14 shrink-0 items-center justify-between border-b border-border/60 px-5">
               <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight">
                 <Settings className="size-4 text-primary" aria-hidden />
@@ -70,7 +70,7 @@ export function SettingsDrawer() {
               </button>
             </div>
             <div className="flex flex-1 overflow-hidden">
-              <nav aria-label="Settings sections" className="flex w-36 shrink-0 flex-col gap-1 border-r border-border/60 p-3">
+              <nav aria-label="Settings sections" className="flex w-[180px] shrink-0 flex-col gap-1 border-r border-border/60 p-3">
                 {SECTIONS.map(({ id, label, Icon }) => {
                   const active = section === id;
                   return (
