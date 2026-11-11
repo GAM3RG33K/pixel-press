@@ -11,8 +11,8 @@ describe("isHugeFile", () => {
   it("does not flag small files", () => {
     expect(isHugeFile({ size: 100 * 1024 * 1024 })).toBe(false);
   });
-  it("hits the ETA boundary exactly", () => {
-    expect(isHugeFile({ size: 150e6 * 120 + 1 })).toBe(true);
-    expect(isHugeFile({ size: 150e6 * 120 })).toBe(false);
+  it("respects the exact 2 GB size boundary", () => {
+    expect(isHugeFile({ size: 2 * 1024 * 1024 * 1024 })).toBe(false);
+    expect(isHugeFile({ size: 2 * 1024 * 1024 * 1024 + 1 })).toBe(true);
   });
 });
