@@ -24,17 +24,15 @@ Local-first and fully local after first install — a native desktop app where F
 
 - People shipping video-heavy sites (hero loops, background videos, documentation clips) who need small MP4/WebM outputs plus ready-to-paste `<video>` markup.
 - People tidying a folder of videos (e.g. a show's season of 480p episodes) with a batch optimize + zip workflow.
-- People auditing a web codebase for missing `preload="none"`, posters, WebM sources, and muted-decoration audio — scanned locally, no upload of source.
 - Runs fully offline after first launch; the app data dir holds downloaded ffmpeg/ffprobe and the optional LLM weights.
 
 ## Capabilities and Constraints
 
 - Native encode/probe via downloaded (SHA-256-verified) ffmpeg/ffprobe; no browser sandbox limits. Tauri native drops probe the real file path and encode in place (source untouched); huge files (>2 GB) get the same treatment — nothing is staged in memory before probe.
 - Deterministic rule engine always available; optional local SmolLM2-360M (Apache-2.0) via native llama.cpp for intent → plan, opt-in from Settings → Local AI.
-- A bottom-center tray surfaces every in-flight task (encodes, audit scans, first-launch downloads) with progress + cancel, and jump-to-tab; switching tabs never cancels running work.
+- A bottom-center tray surfaces every in-flight task (encodes, first-launch downloads) with progress + cancel; leaving a flow never cancels running work.
 - Long filenames render as overflow-aware marquee (pause on hover/focus-within; `prefers-reduced-motion` falls back to ellipsis).
-- Three workbenches for conversion: Compress (intent → plan → encode), Compare (same source, three quality anchors), Optimize (folder batch; single file → `name_optimized.ext` next to source, bulk → mirrored `pixel-pressed-<timestamp>/` folder).
-- Audit: local regex scan of HTML/JSX/TSX/Vue/Svelte/Astro for video-related issues; no network.
+- One unified drop surface is the home: drop one video (single-file press; intent → plan → encode, savings-% hero result) or a folder (Folder Check-Up — per-file codec/res/bitrate + estimated saving — then "Press all", mirrored into `pixel-pressed-<timestamp>/`). Compare survives as a post-encode "Try 3 quality levels" panel. The video-tag Audit tab was removed in the v0.2.0 revamp (the linter lives in git history).
 - Consolidated `$APPDATA/cache` for all staging/probe/encode temp artifacts; Settings drawer shows live usage with a clear button (ffmpeg tools and LLM weights untouched).
 - GPL/LGPL FFmpeg and Apache-2.0 LLM weights are first-run downloads, not bundled; notices ship (see THIRD_PARTY_NOTICES.md).
 - Built-in updater (Settings → Updates): checks for updates against the app's flavor release channel, downloads the new build, installs it in place, and restarts — VS Code-style self-update. Prod checks published prod releases on GitHub Releases; dev checks the dev-latest prerelease feed (served from `gam3rg33k.github.io/pixel-press/dev-latest.json`). No silent updates; explicit user action required.

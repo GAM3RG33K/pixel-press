@@ -1,6 +1,6 @@
 # pixel-press
 
-A **local-first, local-only** video compressor and project auditor available as a native desktop app. FFmpeg and the local LLM are installed on first launch via a tested download manager; nothing is uploaded anywhere — every byte is processed on your device.
+A **local-first, local-only** video compressor available as a native desktop app. FFmpeg and the local LLM are installed on first launch via a tested download manager; nothing is uploaded anywhere — every byte is processed on your device.
 
 > Status: Tauri v2 desktop app on `main`; CI release pipeline live (4 shipping targets, tag-push triggered). Recent additions: tasks-in-progress tray, huge-file smart probe, consolidated cache + Settings drawer (Engine | Cache | Updates), built-in update check. PWA milestone preserved at `v0.0.0-pwa-milestone` on `main`.
 
@@ -60,14 +60,16 @@ No silent updates; you always see what will be installed, and you can install la
 
 ## How it works
 
+The home is one drop surface — no tabs. Drop **one video** (smallest sensible encode) or **a folder / several videos** (folder Check-Up, then one pass, mirrored into `pixel-pressed-<timestamp>/`). Goal chips — Smallest file · Good enough quality · Social 1080p · Keep it crisp — pre-pick the intent in plain words.
+
 1. Drop a video → native `ffprobe` reads metadata from the file's headers in milliseconds — even for 10 GB files (huge files encode straight from the untouched source path; no in-memory copy).
 2. The deterministic rule engine (default; always available) picks the codec/CRF. An optional local LLM (downloaded if you choose) does the same from your natural-language intent.
 3. Codec fallbacks H.264 ↔ H.265 swap with a loud notice when one is unavailable.
-4. A bottom-center tray shows every running task (Compress, Compare, Optimize, Audit, first-launch downloads); click a row to jump to its workbench or cancel it — work keeps running when you switch tabs.
+4. A bottom-center tray shows every running task (single-file compress, folder shrink, first-launch downloads); click a row to jump back into the flow or cancel it — work keeps running when you go back to the press.
 5. Outputs:
    - `video-h264.mp4` (Universal H.264)
    - `video-vp9.webm` (WebM)
-6. Ready-to-drop `<video>` HTML and JSX snippets with `playsinline` / `muted` / `preload="metadata"`.
+6. After encode: a savings-% hero, before/after bar, one-click downloads, a "Try 3 quality levels" panel, and optional `<video>` snippet copy.
 
 Long filenames animate as a marquee inside their container — sibling text (buttons, %, MB/s, Cancel) always stays fully visible. Settings (gear icon) holds Engine diagnostics and a Cache section with live usage + wipe.
 
