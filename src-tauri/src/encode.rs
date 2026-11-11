@@ -61,7 +61,7 @@ fn sanitize(name: &str) -> String {
     trimmed
 }
 
-/// Creates a unique temp directory under `$APPDATA/tmp` and returns the
+/// Creates a unique temp directory under `$APPDATA/cache` and returns the
 /// input/output absolute paths inside it.
 #[tauri::command]
 pub fn encode_paths(app: AppHandle, input_name: String, output_name: String) -> Result<EncodePaths, String> {
@@ -69,7 +69,7 @@ pub fn encode_paths(app: AppHandle, input_name: String, output_name: String) -> 
         .path()
         .app_data_dir()
         .map_err(|e| format!("no app data dir: {e}"))?
-        .join("tmp");
+        .join("cache");
     let unique = format!(
         "job-{}-{}",
         std::process::id(),
@@ -234,7 +234,7 @@ pub fn ffmpeg_encoders(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub fn cleanup_encode_dir(path: String) -> Result<bool, String> {
     let p = std::path::Path::new(&path);
-    if p.is_dir() && p.to_string_lossy().contains("tmp") {
+    if p.is_dir() && p.to_string_lossy().contains("cache") {
         std::fs::remove_dir_all(p).map_err(|e| format!("cleanup {path}: {e}"))?;
         return Ok(true);
     }

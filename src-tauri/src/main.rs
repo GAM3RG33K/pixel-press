@@ -47,6 +47,27 @@ fn main() {
                 .expect("failed to resolve app data dir");
             std::fs::create_dir_all(path.join("bin")).expect("could not create bin dir");
             std::fs::create_dir_all(path.join("models")).expect("could not create models dir");
+            // Best-effort sweep: delete cache entries older than 24h.
+            let cache = path.join("cache");
+            let cutoff = std::time::SystemTime::now()
+                .checked_sub(std::time::Duration::from_secs(24 * 3600));
+            if let (Ok(entries), Some(cutoff)) = (std::fs::read_dir(&cache), cutoff) {
+                for entry in entries.flatten() {
+                    let stale = entry
+                        .metadata()
+                        .and_then(|m| m.modified())
+                        .map(|mtime| mtime < cutoff)
+                        .unwrap_or(false);
+                    if stale {
+                        let p = entry.path();
+                        if p.is_dir() {
+                            let _ = std::fs::remove_dir_all(&p);
+                        } else {
+                            let _ = std::fs::remove_file(&p);
+                        }
+                    }
+                }
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -173,7 +194,9 @@ fn ffprobe_bytes(app: AppHandle, bytes: Vec<u8>, file_name: String) -> Result<St
         .filter(|s| s.chars().all(|c| c.is_ascii_alphanumeric()))
         .unwrap_or("tmp")
         .to_string();
-    let tmp = std::env::temp_dir().join(format!("pixel-press-{}.{suffix}", std::process::id()));
+    let cache = app.path().app_data_dir().map_err(|e| e.to_string())?.join("cache");
+    std::fs::create_dir_all(&cache).map_err(|e| e.to_string())?;
+    let tmp = cache.join(format!("ffprobe-{}-{:?}.{suffix}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)));
     std::fs::write(&tmp, &bytes).map_err(|e| format!("could not write temp file {tmp:?}: {e}"))?;
     let out = ffprobe_json(app, tmp.to_string_lossy().into_owned());
     let _ = std::fs::remove_file(&tmp);
