@@ -56,10 +56,12 @@ jobs:
         include:
           - name: macOS Apple Silicon
             platform: macos-latest
-            args: --target aarch64-apple-darwin --bundles dmg
+            # `app` produces the .app.tar.gz updater artifact (required by the
+            # in-app updater); `dmg` is the installer for fresh downloads.
+            args: --target aarch64-apple-darwin --bundles app,dmg
           - name: macOS Intel
             platform: macos-latest
-            args: --target x86_64-apple-darwin --bundles dmg
+            args: --target x86_64-apple-darwin --bundles app,dmg
           - name: Linux x64
             platform: ubuntu-22.04
             args: --bundles appimage,deb
@@ -177,12 +179,23 @@ jobs:
             > **Flavors:** tags containing `-dev` (e.g. `v0.1.0-dev`) produce the development flavor — **"pixel-press Dev"** (`com.pixelpress.app.dev`) — marked as a prerelease. It installs side-by-side with production and never overrides it. Plain tags produce the production build.
           args: ${{ matrix.args }} ${{ steps.flavor.outputs.flavor == 'dev' && '--config src-tauri/tauri.dev.conf.json' || '' }}
 
-      # Dev releases publish a copy of the updater JSON to GitHub Pages so the dev
-      # flavor's updater (pointing at gam3rg33k.github.io/pixel-press/dev-latest.json)
-      # can find the newest dev build. The gh-pages branch also carries the landing
-      # page (site/ on main) — this step SYNCS both instead of wiping the branch.
+      # The gh-pages sync used to run inside all four matrix legs, which raced
+      # (legs reaching the step before latest.json was uploaded got a 404 and
+      # failed the job). It now lives in the `publish-pages` job below, which
+      # runs once after all legs finish.
+
+  # Runs once, after all four build legs succeed (or at least complete), to
+  # sync the landing page and dev-latest.json into gh-pages. Devs tags only.
+  publish-pages:
+    needs: publish
+    if: ${{ github.ref_type == 'tag' && contains(github.ref_name, '-dev') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Publish landing page + dev-latest.json to GitHub Pages
-        if: ${{ steps.flavor.outputs.flavor == 'dev' && github.ref_type == 'tag' }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -192,8 +205,15 @@ jobs:
           echo "Publishing gh-pages (site/ + dev-latest.json) for $TAG"
           url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/latest.json"
           tmp_json="$(mktemp)"
-          if ! curl -fsSL "$url" -o "$tmp_json"; then
-            echo "::error::Could not fetch latest.json from $url — did the build upload it?"
+          # latest.json is uploaded during the matrix build; give the release
+          # assets a moment to settle, then retry a couple of times.
+          for attempt in 1 2 3 4 5; do
+            if curl -fsSL "$url" -o "$tmp_json"; then break; fi
+            echo "attempt $attempt: latest.json not ready yet; sleeping 15s"
+            sleep 15
+          done
+          if [ ! -s "$tmp_json" ]; then
+            echo "::error::Could not fetch latest.json from $url"
             exit 1
           fi
           work="$(mktemp -d)/pages"
@@ -202,7 +222,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/$GITHUB_REPOSITORY.git"
-          # Clone existing gh-pages if present; otherwise create an orphan root.
           if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
             git fetch -q --depth=1 origin gh-pages
             git checkout -q -B gh-pages FETCH_HEAD
@@ -210,7 +229,6 @@ jobs:
             git checkout -q --orphan gh-pages
             git rm -rfq --ignore-unmatch .
           fi
-          # Refresh the landing page from site/ on the tagged commit; keep dev-latest.json fresh.
           rm -rf ./*
           cp -R "$GITHUB_WORKSPACE/site/." ./
           cp "$tmp_json" ./dev-latest.json
