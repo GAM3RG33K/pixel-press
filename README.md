@@ -54,7 +54,7 @@ git push origin v0.1.1-dev
 The desktop app can update itself in place from **Settings → Updates** — same as most desktop apps: check, download, install, restart. The flavor determines which release channel it tracks:
 
 - **production** (`pixel-press`) → latest published production release on GitHub Releases.
-- **development** (`pixel-press Dev`) → newest dev build published to `gam3rgeek.github.io/pixel-press/dev-latest.json` (a static manifest re-published on every dev tag push; mirror of the dev prerelease's `latest.json`).
+- **development** (`pixel-press Dev`) → newest dev build published to `gam3rg33k.github.io/pixel-press/dev-latest.json` (a static manifest re-published on every dev tag push; mirror of the dev prerelease's `latest.json`).
 
 No silent updates; you always see what will be installed, and you can install later.
 

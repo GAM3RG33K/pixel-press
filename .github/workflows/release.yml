@@ -178,7 +178,7 @@ jobs:
           args: ${{ matrix.args }} ${{ steps.flavor.outputs.flavor == 'dev' && '--config src-tauri/tauri.dev.conf.json' || '' }}
 
       # Dev releases publish a copy of the updater JSON to GitHub Pages so the dev
-      # flavor's updater (pointing at gam3rgeek.github.io/pixel-press/dev-latest.json)
+      # flavor's updater (pointing at gam3rg33k.github.io/pixel-press/dev-latest.json)
       # can find the newest dev build. The gh-pages branch also carries the landing
       # page (site/ on main) — this step SYNCS both instead of wiping the branch.
       - name: Publish landing page + dev-latest.json to GitHub Pages
