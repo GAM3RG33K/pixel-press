@@ -1,4 +1,13 @@
 {
   "productName": "pixel-press Dev",
-  "identifier": "com.pixelpress.app.dev"
+  "identifier": "com.pixelpress.app.dev",
+  "plugins": {
+    "updater": {
+      "requireSignedVersion": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE4Nzc2RkE4RDU4NkEyNkEKUldScW9vYlZxRzkzR0ErM1hDTElCc1BDUlhnTm1XMWFkaHMzYisrYVhnU1NnRklObU9LaUNTcTMK",
+      "endpoints": [
+        "https://gam3rgeek.github.io/pixel-press/dev-latest.json"
+      ]
+    }
+  }
 }

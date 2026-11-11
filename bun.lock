@@ -8,6 +8,7 @@
         "@mlc-ai/web-llm": "^0.2.87",
         "@tauri-apps/api": "^2.12.4",
         "@tauri-apps/plugin-fs": "^2.7.1",
+        "@tauri-apps/plugin-updater": "~2",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "coi-serviceworker": "^0.1.7",
@@ -24,6 +25,7 @@
         "@playwright/test": "1.65.0",
         "@tailwindcss/vite": "^4.3.5",
         "@tauri-apps/cli": "^2.0.0",
+        "@tauri-apps/plugin-process": "~2",
         "@testing-library/jest-dom": "^7.0.1",
         "@testing-library/react": "^16.3.3",
         "@types/node": "^26.6.6",
@@ -405,6 +407,10 @@
     "@tauri-apps/cli-win32-x64-msvc": ["@tauri-apps/cli-win32-x64-msvc@2.12.4", "https://registry.npmmirror.com/@tauri-apps/cli-win32-x64-msvc/-/cli-win32-x64-msvc-2.12.4.tgz", { "os": "win32", "cpu": "x64" }, "sha512-DJhDeCqjLDNMWYFy7ZS8cfeAHX2RK0RbQMLiA3bMVVkXRDJ4NBYiHriGqsUhsr9iG41aTb+dJGkFPmPw1gWwVw=="],
 
     "@tauri-apps/plugin-fs": ["@tauri-apps/plugin-fs@2.7.1", "https://registry.npmmirror.com/@tauri-apps/plugin-fs/-/plugin-fs-2.7.1.tgz", { "dependencies": { "@tauri-apps/api": "^2.12.0" } }, "sha512-4TBVjpi/q8PuNzjpkAc2iBGXMTLjOrAyfTiiOL8ORaJCZJRG3tjzmQ4sqs2CMG75FvLyRkOkERfP7AyY4iBNwQ=="],
+
+    "@tauri-apps/plugin-process": ["@tauri-apps/plugin-process@2.4.0", "https://registry.npmmirror.com/@tauri-apps/plugin-process/-/plugin-process-2.4.0.tgz", { "dependencies": { "@tauri-apps/api": "^2.12.0" } }, "sha512-GddrmsSLAYrLa/yTXlXK/YRDzUgYeeOnUXTbiyvJWkmI424RmDPD3FVLeqcon7rv6O6ZfhBilcrHWnSo7o6hIQ=="],
+
+    "@tauri-apps/plugin-updater": ["@tauri-apps/plugin-updater@2.14.1", "https://registry.npmmirror.com/@tauri-apps/plugin-updater/-/plugin-updater-2.14.1.tgz", { "dependencies": { "@tauri-apps/api": "^2.12.0" } }, "sha512-Hr7nlBm1wT6xbwzjZ/S36YULazu8MNlj5vvOwMl47fXI7HTa5Bjl1PbDEwVHaZTAKzE1VZsUy35UqnbrQxmYQw=="],
 
     "@testing-library/dom": ["@testing-library/dom@10.4.2", "https://registry.npmmirror.com/@testing-library/dom/-/dom-10.4.2.tgz", { "dependencies": { "@babel/code-frame": "^7.10.4", "@babel/runtime": "^7.12.5", "@types/aria-query": "^5.0.1", "aria-query": "5.3.0", "dom-accessibility-api": "^0.5.9", "lz-string": "^1.5.0", "picocolors": "1.1.1", "pretty-format": "^27.0.2" } }, "sha512-yzr2S9HyAIdhz2/6qHgbs665Q7PKVcDF05vsOlHPxG1mo36gKVesdYVeDLnXgfjJ03CrKRk08knc6+E/9m8v2Q=="],
 

@@ -39,6 +39,16 @@
       "icons/512x512.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "requireSignedVersion": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE4Nzc2RkE4RDU4NkEyNkEKUldScW9vYlZxRzkzR0ErM1hDTElCc1BDUlhnTm1XMWFkaHMzYisrYVhnU1NnRklObU9LaUNTcTMK",
+      "endpoints": [
+        "https://github.com/GAM3RG33K/pixel-press/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

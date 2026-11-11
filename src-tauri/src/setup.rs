@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
-use tauri::Manager;
 use tauri::Emitter;
+use tauri::Manager;
 use tokio::fs;
 
 #[derive(Deserialize)]
@@ -146,8 +146,8 @@ pub fn available_models() -> Result<Vec<ModelSpec>, String> {
     let manifest = load_manifest()?;
     let mut out = Vec::new();
     for (id, value) in manifest.models {
-        let model: ModelEntry = serde_json::from_value(value)
-            .map_err(|e| format!("model {id}: {e}"))?;
+        let model: ModelEntry =
+            serde_json::from_value(value).map_err(|e| format!("model {id}: {e}"))?;
         out.push(ModelSpec {
             id: id.clone(),
             label: model.label,
@@ -254,9 +254,7 @@ pub async fn download_file(
             bytes_seen += chunk.len() as u64;
             let _ = app.emit("download-progress", (event_id.as_str(), bytes_seen));
         }
-        file.flush()
-            .await
-            .map_err(|e| format!("flush: {e}"))?;
+        file.flush().await.map_err(|e| format!("flush: {e}"))?;
     }
 
     // SHA-256 verification
@@ -264,11 +262,13 @@ pub async fn download_file(
     {
         use std::io::Read;
         let mut buf = vec![0u8; 64 * 1024];
-        let mut file = std::fs::File::open(&tmp_path)
-            .map_err(|e| format!("open {tmp_path:?}: {e}"))?;
+        let mut file =
+            std::fs::File::open(&tmp_path).map_err(|e| format!("open {tmp_path:?}: {e}"))?;
         loop {
             let n = file.read(&mut buf).map_err(|e| format!("read: {e}"))?;
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             hasher.update(&buf[..n]);
         }
     }
@@ -332,7 +332,9 @@ pub async fn download_tool(
         let mut stream = response.bytes_stream();
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| format!("chunk error: {e}"))?;
-            file.write_all(&chunk).await.map_err(|e| format!("write: {e}"))?;
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| format!("write: {e}"))?;
             bytes_seen += chunk.len() as u64;
             let _ = app.emit("setup-progress", (tool_id.as_str(), bytes_seen));
         }
@@ -344,10 +346,13 @@ pub async fn download_tool(
     {
         use std::io::Read;
         let mut buf = vec![0u8; 64 * 1024];
-        let mut file = std::fs::File::open(&tmp_path).map_err(|e| format!("open {tmp_path:?}: {e}"))?;
+        let mut file =
+            std::fs::File::open(&tmp_path).map_err(|e| format!("open {tmp_path:?}: {e}"))?;
         loop {
             let n = file.read(&mut buf).map_err(|e| format!("read: {e}"))?;
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             hasher.update(&buf[..n]);
         }
     }
@@ -364,21 +369,41 @@ pub async fn download_tool(
     let mut installed: Vec<String> = Vec::new();
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(|e| format!("zip entry {i}: {e}"))?;
-        let raw = entry.name().map(|c| c.into_owned()).unwrap_or_else(|_| String::new());
-        let Some(name) = Path::new(&raw).file_name().and_then(|s| s.to_str()).map(|s| s.to_string()) else { continue };
-        if entry.is_dir() { continue; }
-        let want = name == "ffmpeg" || name == "ffprobe" || name == "ffmpeg.exe" || name == "ffprobe.exe";
-        if !want { continue; }
+        let raw = entry
+            .name()
+            .map(|c| c.into_owned())
+            .unwrap_or_else(|_| String::new());
+        let Some(name) = Path::new(&raw)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string())
+        else {
+            continue;
+        };
+        if entry.is_dir() {
+            continue;
+        }
+        let want =
+            name == "ffmpeg" || name == "ffprobe" || name == "ffmpeg.exe" || name == "ffprobe.exe";
+        if !want {
+            continue;
+        }
 
         let dest = bin_dir.join(&name);
-        let mut out = fs::File::create(&dest).await.map_err(|e| format!("create {dest:?}: {e}"))?;
+        let mut out = fs::File::create(&dest)
+            .await
+            .map_err(|e| format!("create {dest:?}: {e}"))?;
         use std::io::Read;
         let mut buf = vec![0u8; 64 * 1024];
         loop {
             let n = entry.read(&mut buf).map_err(|e| format!("zip read: {e}"))?;
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             use tokio::io::AsyncWriteExt;
-            out.write_all(&buf[..n]).await.map_err(|e| format!("write {dest:?}: {e}"))?;
+            out.write_all(&buf[..n])
+                .await
+                .map_err(|e| format!("write {dest:?}: {e}"))?;
         }
         #[cfg(unix)]
         {

@@ -55,16 +55,33 @@ fn children() -> &'static Mutex<HashMap<String, std::process::Child>> {
 fn sanitize(name: &str) -> String {
     let cleaned: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
-    let trimmed = cleaned.chars().rev().take(120).collect::<String>().chars().rev().collect::<String>();
+    let trimmed = cleaned
+        .chars()
+        .rev()
+        .take(120)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect::<String>();
     trimmed
 }
 
 /// Creates a unique temp directory under `$APPDATA/cache` and returns the
 /// input/output absolute paths inside it.
 #[tauri::command]
-pub fn encode_paths(app: AppHandle, input_name: String, output_name: String) -> Result<EncodePaths, String> {
+pub fn encode_paths(
+    app: AppHandle,
+    input_name: String,
+    output_name: String,
+) -> Result<EncodePaths, String> {
     let base = app
         .path()
         .app_data_dir()
@@ -79,17 +96,27 @@ pub fn encode_paths(app: AppHandle, input_name: String, output_name: String) -> 
             .as_millis()
     );
     let dir = base.join(unique);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("could not create {}: {e}", dir.display()))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("could not create {}: {e}", dir.display()))?;
     Ok(EncodePaths {
-        input_path: dir.join(sanitize(&input_name)).to_string_lossy().into_owned(),
-        output_path: dir.join(sanitize(&output_name)).to_string_lossy().into_owned(),
+        input_path: dir
+            .join(sanitize(&input_name))
+            .to_string_lossy()
+            .into_owned(),
+        output_path: dir
+            .join(sanitize(&output_name))
+            .to_string_lossy()
+            .into_owned(),
     })
 }
 
 /// Runs ffmpeg with the given argument list, streaming `encode-progress`
 /// events (`{ requestId, progress }`, progress 0-100) parsed from stdout.
 #[tauri::command]
-pub async fn encode_video(app: AppHandle, request: EncodeRequest) -> Result<EncodeResultJson, String> {
+pub async fn encode_video(
+    app: AppHandle,
+    request: EncodeRequest,
+) -> Result<EncodeResultJson, String> {
     if let Some(parent) = std::path::Path::new(&request.output_path).parent() {
         if !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent)
@@ -97,12 +124,21 @@ pub async fn encode_video(app: AppHandle, request: EncodeRequest) -> Result<Enco
         }
     }
 
-    let ffmpeg = crate::resolve_exe(&app, "ffmpeg")
-        .ok_or_else(|| "ffmpeg not found (download via setup, or install it on PATH)".to_string())?;
+    let ffmpeg = crate::resolve_exe(&app, "ffmpeg").ok_or_else(|| {
+        "ffmpeg not found (download via setup, or install it on PATH)".to_string()
+    })?;
 
     // stdout carries the `-progress` key=value stream; stderr carries the log.
     let mut args = request.args.clone();
-    args.splice(0..0, ["-hide_banner".to_string(), "-progress".to_string(), "pipe:1".to_string(), "-y".to_string()]);
+    args.splice(
+        0..0,
+        [
+            "-hide_banner".to_string(),
+            "-progress".to_string(),
+            "pipe:1".to_string(),
+            "-y".to_string(),
+        ],
+    );
 
     let started = std::time::Instant::now();
     let mut child = Command::new(&ffmpeg)
@@ -113,13 +149,21 @@ pub async fn encode_video(app: AppHandle, request: EncodeRequest) -> Result<Enco
         .spawn()
         .map_err(|e| format!("ffmpeg spawn failed ({e}) — path: {ffmpeg}"))?;
 
-    let stdout = child.stdout.take().ok_or_else(|| "ffmpeg stdout unavailable".to_string())?;
-    let stderr = child.stderr.take().ok_or_else(|| "ffmpeg stderr unavailable".to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "ffmpeg stdout unavailable".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "ffmpeg stderr unavailable".to_string())?;
     let request_id = request.request_id.clone();
     let duration = request.duration_seconds;
 
     {
-        let mut guard = children().lock().map_err(|_| "encode registry poisoned".to_string())?;
+        let mut guard = children()
+            .lock()
+            .map_err(|_| "encode registry poisoned".to_string())?;
         guard.insert(request_id.clone(), child);
     }
 
@@ -139,7 +183,10 @@ pub async fn encode_video(app: AppHandle, request: EncodeRequest) -> Result<Enco
     let progress_request_id = request_id.clone();
     let progress_handle = std::thread::spawn(move || {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            if let Some(value) = line.strip_prefix("out_time_us=").or_else(|| line.strip_prefix("out_time_ms=")) {
+            if let Some(value) = line
+                .strip_prefix("out_time_us=")
+                .or_else(|| line.strip_prefix("out_time_ms="))
+            {
                 if let Ok(micros) = value.trim().parse::<i64>() {
                     if duration > 0.0 {
                         let seconds = micros as f64 / 1_000_000.0;
@@ -158,7 +205,9 @@ pub async fn encode_video(app: AppHandle, request: EncodeRequest) -> Result<Enco
     let mut status: Option<std::process::ExitStatus> = None;
     {
         loop {
-            let mut guard = children().lock().map_err(|_| "encode registry poisoned".to_string())?;
+            let mut guard = children()
+                .lock()
+                .map_err(|_| "encode registry poisoned".to_string())?;
             match guard.get_mut(&request_id) {
                 Some(child) => match child.try_wait() {
                     Ok(Some(s)) => {
@@ -193,7 +242,9 @@ pub async fn encode_video(app: AppHandle, request: EncodeRequest) -> Result<Enco
         let _ = std::fs::remove_file(&request.input_path);
     }
 
-    let size_bytes = std::fs::metadata(&request.output_path).map(|m| m.len()).unwrap_or(0);
+    let size_bytes = std::fs::metadata(&request.output_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
     Ok(EncodeResultJson {
         duration_ms: started.elapsed().as_millis() as u64,
         exit_code: status.and_then(|s| s.code()).unwrap_or(-1),
@@ -205,7 +256,9 @@ pub async fn encode_video(app: AppHandle, request: EncodeRequest) -> Result<Enco
 /// Kills the ffmpeg child registered under `request_id`, if any.
 #[tauri::command]
 pub fn abort_encode(request_id: String) -> Result<bool, String> {
-    let mut guard = children().lock().map_err(|_| "encode registry poisoned".to_string())?;
+    let mut guard = children()
+        .lock()
+        .map_err(|_| "encode registry poisoned".to_string())?;
     if let Some(mut child) = guard.remove(&request_id) {
         let _ = child.kill();
         let _ = child.wait();
@@ -218,8 +271,9 @@ pub fn abort_encode(request_id: String) -> Result<bool, String> {
 /// Returns the `-encoders` listing from the native ffmpeg, for capability detection.
 #[tauri::command]
 pub fn ffmpeg_encoders(app: AppHandle) -> Result<String, String> {
-    let ffmpeg = crate::resolve_exe(&app, "ffmpeg")
-        .ok_or_else(|| "ffmpeg not found (download via setup, or install it on PATH)".to_string())?;
+    let ffmpeg = crate::resolve_exe(&app, "ffmpeg").ok_or_else(|| {
+        "ffmpeg not found (download via setup, or install it on PATH)".to_string()
+    })?;
     let output = Command::new(&ffmpeg)
         .args(["-hide_banner", "-encoders"])
         .output()

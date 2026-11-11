@@ -149,27 +149,7 @@ export async function clearCache(): Promise<number> {
   return invoke<number>("clear_cache");
 }
 
-export async function latestRelease(flavor: "dev" | "prod"): Promise<LatestRelease> {
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<LatestRelease>("latest_release", { flavor });
-}
-
-export async function downloadAsset(url: string, assetName: string): Promise<string> {
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<string>("download_asset", { url, assetName });
-}
-
 export type UpdateFlavor = "dev" | "prod";
-
-export interface LatestRelease {
-  tag: string;
-  name: string;
-  htmlUrl: string;
-  publishedAt: string;
-  body: string;
-  assets: { name: string; downloadUrl: string; size: number }[];
-}
-
 /** Detect dev flavor from the app identifier (dev config uses com.pixelpress.app.dev). */
 export async function releaseFlavor(): Promise<UpdateFlavor> {
   try {

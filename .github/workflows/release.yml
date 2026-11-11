@@ -143,6 +143,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # mold on Linux slashes final link time (~30–60s per leg).
           RUSTFLAGS: ${{ startsWith(matrix.platform, 'ubuntu') && '-C link-arg=-fuse-ld=mold' || '' }}
+          # Updater signing keypair — set in GitHub Secrets (one-time setup).
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           # Only a tag push publishes. On workflow_dispatch these are empty,
           # which tauri-action treats as "build only, upload nothing".
@@ -173,3 +176,36 @@ jobs:
 
             > **Flavors:** tags containing `-dev` (e.g. `v0.1.0-dev`) produce the development flavor — **"pixel-press Dev"** (`com.pixelpress.app.dev`) — marked as a prerelease. It installs side-by-side with production and never overrides it. Plain tags produce the production build.
           args: ${{ matrix.args }} ${{ steps.flavor.outputs.flavor == 'dev' && '--config src-tauri/tauri.dev.conf.json' || '' }}
+
+      # Dev releases publish a copy of the updater JSON to GitHub Pages so the dev
+      # flavor's updater (pointing at gam3rgeek.github.io/pixel-press/dev-latest.json)
+      # can find the newest dev build without waiting for a prod release publish.
+      - name: Publish dev-latest.json to GitHub Pages
+        if: ${{ steps.flavor.outputs.flavor == 'dev' && github.ref_type == 'tag' }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          echo "Publishing dev-latest.json for $TAG"
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/latest.json"
+          work="$(mktemp -d)/work"
+          mkdir -p "$work"
+          cd "$work"
+          if ! curl -fsSL "$url" -o dev-latest.json; then
+            echo "::error::Could not fetch latest.json from $url — did the build upload it?"
+            exit 1
+          fi
+          gh_pages=".git-pages"
+          mkdir -p "$gh_pages" && cd "$gh_pages"
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/$GITHUB_REPOSITORY.git"
+          # gh-pages branch: force-push a single commit with dev-latest.json
+          git checkout -q --orphan gh-pages || git checkout -q -B gh-pages
+          mv "$work/dev-latest.json" ./dev-latest.json
+          git add dev-latest.json
+          git commit -q -m "chore: publish dev-latest.json ($TAG)"
+          git push -q --force origin gh-pages

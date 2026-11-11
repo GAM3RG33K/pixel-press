@@ -23,6 +23,7 @@
     "@mlc-ai/web-llm": "^0.2.87",
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-fs": "^2.7.1",
+    "@tauri-apps/plugin-updater": "~2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "coi-serviceworker": "^0.1.7",
@@ -37,8 +38,9 @@
   },
   "devDependencies": {
     "@playwright/test": "1.65.0",
-    "@tauri-apps/cli": "^2.0.0",
     "@tailwindcss/vite": "^4.3.5",
+    "@tauri-apps/cli": "^2.0.0",
+    "@tauri-apps/plugin-process": "~2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^26.6.6",
