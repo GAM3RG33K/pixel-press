@@ -5,6 +5,8 @@ import { registerSW } from "virtual:pwa-register";
 import App from "./App";
 import { logIsolationState } from "@/lib/coi";
 import { cleanupOpfsOlderThan, OPFS_MAX_AGE_MS } from "@/lib/opfs";
+import "@fontsource-variable/schibsted-grotesk";
+import "@fontsource-variable/jetbrains-mono";
 import "./index.css";
 
 // Keep the app installable and offline-capable.

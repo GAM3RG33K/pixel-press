@@ -106,7 +106,7 @@ components:
 
 "The Workbench" — a quiet, airy engineering bench for video compression. Tools laid out, no spectacle: the encode is the show, the UI is just the bench. Dark, near-black surfaces with one violet signature (`#8B5CF6`-family, carried by the Halftone Press mark — a shrinking dot field resolving into a violet plate). Comfortable density, generous targets, restrained motion. Everything local; nothing uploads.
 
-Shipped typeface is currently Inter (see Tokens); the recorded direction is **Schibsted Grotesk** — a newspaper-grade grotesk with genuine press DNA — self-hosted, never via CDN. Adoption is a font swap, not a redesign.
+Shipped typeface is **Schibsted Grotesk** (variable, self-hosted via `@fontsource-variable/schibsted-grotesk`); JetBrains Mono (variable, self-hosted) for mono. Never via CDN.
 
 ## Colors
 
@@ -122,13 +122,13 @@ Do not add second accents. Do not put gradients behind headings.
 
 ## Typography
 
-Recorded direction (not yet shipped in the app):
+Shipped (v0.2.0 revamp):
 
 - **Display/Title/Body/Label — Schibsted Grotesk** (`ui-sans-serif` fallback): display 650 weight tight tracking; body 400 at 0.9375rem/1.6; labels 0.75rem semibold, 0.08em tracking, caps for section labels.
 - **Mono — JetBrains Mono**: filenames, ffprobe output, CRF/codec tables, diagnostic logs, paths. Never body copy.
 - Scale ratio ≈ 1.2; no sizes outside the recorded token set.
 
-While the app still loads Inter, treat it as temporary scaffolding; new screens use Schibsted Grotesk after the font migration. Inter is not a brand decision, it's the starting grid.
+Display/hero tokens added for the revamp: `--text-display` (3.25rem, -0.035em) and `--text-hero` (4.5rem, -0.04em) for the outcome numeral. `--press-paper` / `--press-paper-edge` card tone and `.press-field` halftone utility added. Inter removed entirely.
 
 ## Layout
 
