@@ -48,6 +48,20 @@ describe('workflow planner', () => {
     expect(set.variants[1]?.codec).toBe('vp9');
   });
 
+  it('buildWorkbenchVariants emits only the mp4 variant for an h264/mp4 intent', () => {
+    const plan = buildVariantPlan('make this universally compatible, h264 mp4', meta({}));
+    const set = buildWorkbenchVariants(plan, meta({}).fileSize, meta({}), 'out', 'make this universally compatible, h264 mp4');
+    expect(set.variants.length).toBe(1);
+    expect(set.variants[0]?.container).toBe('mp4');
+  });
+
+  it('buildWorkbenchVariants emits only the webm variant for a vp9/webm intent', () => {
+    const plan = { ...buildVariantPlan('', meta({})), targetCodec: 'vp9' as const };
+    const set = buildWorkbenchVariants(plan, meta({}).fileSize, meta({}), 'out', 'make the file as small as possible, vp9 webm');
+    expect(set.variants.length).toBe(1);
+    expect(set.variants[0]?.container).toBe('webm');
+  });
+
   it('estimateSizeBytes is lower for higher CRF (less quality)', () => {
     const a = estimateSizeBytes(100 * 1024 * 1024, 20, 'h264');
     const b = estimateSizeBytes(100 * 1024 * 1024, 32, 'h264');
@@ -72,5 +86,52 @@ describe('workflow planner', () => {
       expect(preset.label.length).toBeGreaterThan(0);
       expect(preset.intent.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('buildWorkbenchVariants — explicit advanced hands pin the output', () => {
+  it('hand-picked vp9 → single WebM variant at exactly the chosen CRF', () => {
+    const plan = { targetCodec: 'h264' as const, crf: 26, ruleSource: 'R7' };
+    const recipe = { ...plan, outputContainer: 'auto' as const, audioHandling: 'copy' as const, subtitleHandling: { mode: 'copy' as const }, stripMetadata: false, faststart: true, targetCodec: 'vp9' as const, crf: 34 };
+    const set = buildWorkbenchVariants(plan, meta({}).fileSize, meta({}), 'out', '', recipe);
+    expect(set.variants).toHaveLength(1);
+    expect(set.variants[0]?.container).toBe('webm');
+    expect(set.variants[0]?.codec).toBe('vp9');
+    expect(set.variants[0]?.crf).toBe(34);
+  });
+
+  it('hand-picked h265 → single MP4 variant with h265', () => {
+    const plan = { targetCodec: 'h264' as const, crf: 26, ruleSource: 'R7' };
+    const recipe = { ...plan, outputContainer: 'auto' as const, audioHandling: 'copy' as const, subtitleHandling: { mode: 'copy' as const }, stripMetadata: false, faststart: true, targetCodec: 'h265' as const };
+    const set = buildWorkbenchVariants(plan, meta({}).fileSize, meta({}), 'out', '', recipe);
+    expect(set.variants).toHaveLength(1);
+    expect(set.variants[0]?.container).toBe('mp4');
+    expect(set.variants[0]?.codec).toBe('h265');
+    expect(set.variants[0]?.crf).toBe(26);
+  });
+
+  it('hand-set CRF with h264 → single MP4 at exactly that CRF', () => {
+    const plan = { targetCodec: 'h264' as const, crf: 26, ruleSource: 'R7' };
+    const recipe = { ...plan, outputContainer: 'auto' as const, audioHandling: 'copy' as const, subtitleHandling: { mode: 'copy' as const }, stripMetadata: false, faststart: true, crf: 22 };
+    const set = buildWorkbenchVariants(plan, meta({}).fileSize, meta({}), 'out', '', recipe);
+    expect(set.variants).toHaveLength(1);
+    expect(set.variants[0]?.container).toBe('mp4');
+    expect(set.variants[0]?.crf).toBe(22);
+  });
+
+  it('AI vp9 plan (no hand edits) → single WebM at plan CRF', () => {
+    const plan = { targetCodec: 'vp9' as const, crf: 42, ruleSource: 'AI: smallest file' };
+    const recipe = { ...plan, outputContainer: 'auto' as const, audioHandling: 'strip' as const, subtitleHandling: { mode: 'copy' as const }, stripMetadata: false, faststart: true };
+    const set = buildWorkbenchVariants(plan, meta({}).fileSize, meta({}), 'out', 'smallest file, vp9 webm', recipe);
+    expect(set.variants).toHaveLength(1);
+    expect(set.variants[0]?.container).toBe('webm');
+    expect(set.variants[0]?.crf).toBe(42);
+  });
+
+  it('untouched h264 + generic intent keeps the dual default', () => {
+    const plan = buildVariantPlan('', meta({}));
+    const recipe = { ...plan, outputContainer: 'auto' as const, audioHandling: 'copy' as const, subtitleHandling: { mode: 'copy' as const }, stripMetadata: false, faststart: true };
+    const set = buildWorkbenchVariants(plan, meta({}).fileSize, meta({}), 'out', 'hero background video', recipe);
+    expect(set.variants).toHaveLength(2);
   });
 });

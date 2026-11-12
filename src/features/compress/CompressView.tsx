@@ -43,9 +43,13 @@ import {
   buildWorkbenchVariants,
   estimateSizeBytes,
 } from "@/lib/workflow";
+import { resolveRecipe, type ResolvedRecipeResult } from "@/lib/ai/plan";
+import { PlanReview } from "@/components/plan-review";
+import { ModelRequiredModal } from "@/components/model-required-modal";
+import { useUserPresets } from "@/lib/use-user-presets";
+import type { EncodeRecipe, RecipeSources } from "@/lib/ffmpeg/recipe";
 import { useAiMode } from "@/lib/ai/use-ai-mode";
 import { registerTask, updateTask, completeTask, failTask, cancelTask } from "@/lib/tasks/registry";
-import { resolvePlan } from "@/lib/ai/plan";
 import { fetchSampleClip } from "@/lib/sample";
 import { diag, captureError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
@@ -56,7 +60,7 @@ interface OutputFile {
   sizeBytes: number;
   durationMs: number;
   blob: Blob;
-  container: "mp4" | "webm";
+  container: import("@/types/media").ContainerFormat;
 }
 
 export function CompressView({
@@ -112,20 +116,22 @@ export function CompressView({
 
   const currentPlan = useMemo(() => buildVariantPlan(intentText, metadata), [intentText, metadata]);
   const aiMode = useAiMode();
-  const [aiPlan, setAiPlan] = useState<{ plan: typeof currentPlan; used: "ai" | "rule-engine" } | null>(null);
+  const [recipeResult, setRecipeResult] = useState<ResolvedRecipeResult | null>(null);
+  /** Hand-edits from the plan-review table and applied user presets — override the resolved recipe. */
+  const [override, setOverride] = useState<{ recipe: EncodeRecipe; sources: RecipeSources } | null>(null);
+  const { presets, advancedMode, setAdvancedMode, applyPreset, savePreset, deletePreset } = useUserPresets();
+  const [showModelModal, setShowModelModal] = useState(false);
+  const bestEffortRef = useRef(false);
 
   useEffect(() => {
-    if (!metadata || !intentText.trim() || aiMode === 'rule-engine') {
-      setAiPlan(null);
+    if (!metadata) {
+      setRecipeResult(null);
       return;
     }
-
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      resolvePlan(metadata, intentText, aiMode).then((result) => {
-        if (!cancelled) {
-          setAiPlan({ plan: result.plan, used: result.used });
-        }
+      resolveRecipe(metadata, intentText.trim() || undefined, aiMode).then((result) => {
+        if (!cancelled) setRecipeResult(result);
       });
     }, 300);
 
@@ -135,12 +141,35 @@ export function CompressView({
     };
   }, [metadata, intentText, aiMode]);
 
-  const resolvedPlan = aiPlan?.plan ?? currentPlan;
-  const resolvedPlanLabel = aiPlan?.used === 'ai' ? `AI plan: ${resolvedPlan.ruleSource}` : resolvedPlan.ruleSource;
+  // Editing the intent releases the applied preset/hand-edit override — re-parse drives the table again.
+  const lastIntentRef = useRef(intentText);
+  useEffect(() => {
+    if (lastIntentRef.current !== intentText) {
+      lastIntentRef.current = intentText;
+      setOverride(null);
+      bestEffortRef.current = false;
+    }
+  }, [intentText]);
+
+  const resolvedRecipe: EncodeRecipe = override?.recipe ?? recipeResult?.recipe ?? {
+    targetCodec: currentPlan.targetCodec,
+    crf: currentPlan.crf,
+    ...(currentPlan.twoPass !== undefined ? { twoPass: currentPlan.twoPass } : {}),
+    ...(currentPlan.preserveKeyframes !== undefined ? { preserveKeyframes: currentPlan.preserveKeyframes } : {}),
+    ...(currentPlan.targetScale ? { targetScale: currentPlan.targetScale } : {}),
+    outputContainer: "auto",
+    audioHandling: currentPlan.audioHandling === "strip" ? "strip" : currentPlan.audioHandling ?? "copy",
+    subtitleHandling: { mode: "copy" as const },
+    stripMetadata: false,
+    faststart: true,
+  };
+  const resolvedSources: RecipeSources = override?.sources ?? recipeResult?.sources ?? {};
+  const resolvedPlan = recipeResult?.plan ?? currentPlan;
+  const resolvedPlanLabel = recipeResult?.used === 'ai' ? `AI plan: ${resolvedPlan.ruleSource}` : resolvedPlan.ruleSource;
   const variantSet = useMemo(() => {
     if (!metadata) return null;
-    return buildWorkbenchVariants(resolvedPlan, metadata.fileSize, metadata, "optimized");
-  }, [resolvedPlan, metadata]);
+    return buildWorkbenchVariants(resolvedPlan, metadata.fileSize, metadata, "optimized", intentText, resolvedRecipe);
+  }, [resolvedPlan, metadata, intentText, resolvedRecipe]);
 
   // Pre-load engine when the user has a file so probe feels instant
   useEffect(() => {
@@ -254,8 +283,35 @@ export function CompressView({
     void analyzeFile(initialFile.file, initialFile.path, initialFile.sizeBytes);
   }, [initialFile, analyzeFile]);
 
-  const encodeNow = useCallback(async () => {
+  const CONTAINER_EXT: Record<string, string> = { mp4: "mp4", webm: "webm", mov: "mov", mkv: "mkv", avi: "avi" };
+  const CONTAINER_MIME: Record<string, string> = { mp4: "video/mp4", mov: "video/quicktime", mkv: "video/x-matroska", webm: "video/webm", avi: "video/x-msvideo" };
+
+  const encodeNow = useCallback(async (modeOverride?: import("@/lib/settings").AIMode) => {
     if (!file || !metadata) return;
+
+    // Resolve the recipe first — the needs-model gate lives here, before any encode starts.
+    const resolved = override
+      ? {
+          recipe: override.recipe,
+          sources: override.sources,
+          used: "rule-engine" as const,
+          plan: recipeResult?.plan ?? buildVariantPlan(intentText, metadata),
+          needsModel: false,
+          intentNotes: [] as string[],
+        }
+      : await resolveRecipe(metadata, intentText.trim() || undefined, modeOverride ?? aiMode);
+
+    if (resolved.needsModel && !bestEffortRef.current) {
+      setShowModelModal(true);
+      return;
+    }
+
+    const recipe = resolved.recipe;
+    const effectiveDuration =
+      recipe.trimEnd !== undefined
+        ? Math.max(0.1, recipe.trimEnd - (recipe.trimStart ?? 0))
+        : metadata.duration;
+
     setStatus("encoding");
     setError(null);
     setProgress(0);
@@ -266,7 +322,7 @@ export function CompressView({
     abortRef.current = new AbortController();
     const base = file.name.replace(/\.[^./]+$/, "") || "video";
 
-    const variantsToEncode = variantSet?.variants ?? [];
+    const variantsToEncode = buildWorkbenchVariants(resolved.plan, metadata.fileSize, metadata, "optimized", intentText, recipe).variants;
       let taskId: string | null = null;
     const useNative = isNativeEngine();
     try {
@@ -279,8 +335,8 @@ export function CompressView({
           setStatus("ready");
           return;
         }
-        const outName =
-          variant.container === "webm" ? `${base}-webm.webm` : `${base}-h264.mp4`;
+        const outExt = CONTAINER_EXT[variant.container] ?? "mp4";
+        const outName = `${base}-${outExt === "mp4" ? "h264" : outExt}.${outExt}`;
         taskId = registerTask({
           workbench: "compress",
           label: `Compress · ${variant.label}`,
@@ -310,9 +366,14 @@ export function CompressView({
                   height: variant.targetScale.height,
                 }
               : {}),
-            stripAudio: variant.stripAudio,
-            faststart: variant.container === "mp4",
-            durationSeconds: metadata.duration,
+            stripAudio: recipe.audioHandling === "strip",
+            audioHandling: recipe.audioHandling,
+            subtitleHandling: recipe.subtitleHandling,
+            stripMetadata: recipe.stripMetadata,
+            ...(recipe.trimStart !== undefined ? { trimStart: recipe.trimStart } : {}),
+            ...(recipe.trimEnd !== undefined ? { trimEnd: recipe.trimEnd } : {}),
+            faststart: recipe.faststart && (variant.container === "mp4" || variant.container === "mov"),
+            durationSeconds: effectiveDuration,
             onProgress: (p) => {
               setProgress(p);
               updateTask(currentTaskId, { progress: p, stage: `${variant.label} · encoding` });
@@ -344,9 +405,14 @@ export function CompressView({
                   height: variant.targetScale.height,
                 }
               : {}),
-            stripAudio: variant.stripAudio,
-            faststart: variant.container === "mp4",
-            durationSeconds: metadata.duration,
+            stripAudio: recipe.audioHandling === "strip",
+            audioHandling: recipe.audioHandling,
+            subtitleHandling: recipe.subtitleHandling,
+            stripMetadata: recipe.stripMetadata,
+            ...(recipe.trimStart !== undefined ? { trimStart: recipe.trimStart } : {}),
+            ...(recipe.trimEnd !== undefined ? { trimEnd: recipe.trimEnd } : {}),
+            faststart: recipe.faststart && (variant.container === "mp4" || variant.container === "mov"),
+            durationSeconds: effectiveDuration,
             onProgress: ({ progress: p }) => {
               setProgress(p);
               updateTask(currentTaskId, { progress: p, stage: `${variant.label} · encoding` });
@@ -367,7 +433,7 @@ export function CompressView({
           sizeBytes: encodedResult.data.byteLength,
           durationMs: encodedResult.durationMs,
           blob: new Blob([encodedResult.data as Uint8Array<ArrayBuffer>], {
-            type: variant.container === "webm" ? "video/webm" : "video/mp4",
+            type: CONTAINER_MIME[variant.container] ?? "video/mp4",
           }),
           container: variant.container,
         });
@@ -403,7 +469,7 @@ export function CompressView({
       setError(normalized.message);
       setStatus("error");
     }
-  }, [file, metadata, variantSet]);
+  }, [file, metadata, aiMode, override, recipeResult, intentText]);
 
   const download = useCallback((output: OutputFile) => {
     const url = URL.createObjectURL(output.blob);
@@ -417,8 +483,9 @@ export function CompressView({
   const copySnippet = useCallback(
     async (kind: "html" | "jsx") => {
       if (outputs.length === 0) return;
+      const snippetOutputs = outputs.filter((output) => output.container === "mp4" || output.container === "mov" || output.container === "webm");
       const snippet = buildVideoSnippet(
-        outputs.map((output) => ({
+        (snippetOutputs.length > 0 ? snippetOutputs : outputs).map((output) => ({
           fileName: output.fileName,
           path: `./${output.fileName}`,
           container: output.container,
@@ -429,7 +496,7 @@ export function CompressView({
           posterPath: buildPosterPath(
             (file?.name ?? "video").replace(/\.[^./]+$/, ""),
           ),
-          autoplay: currentPlan.audioHandling === "strip" && currentPlan.ruleSource !== "R7: Default fallback",
+          autoplay: resolvedRecipe.audioHandling === "strip",
           loop: true,
           preload: "metadata",
           withJsx: kind === "jsx",
@@ -439,14 +506,14 @@ export function CompressView({
       setCopied(kind);
       window.setTimeout(() => setCopied(null), 1800);
     },
-    [outputs, resolvedPlan, file],
+    [outputs, resolvedRecipe, file],
   );
 
-  const removeAudioPlanned = resolvedPlan.audioHandling === "strip";
+  const removeAudioPlanned = resolvedRecipe.audioHandling === "strip";
 
   const tryQualityLevels = useCallback(async () => {
     if (!file || !metadata) return;
-    const base = resolvedPlan.crf;
+    const base = resolvedRecipe.crf;
     const crfs = Array.from(new Set([Math.max(18, base - 6), base, Math.min(36, base + 6)]));
     setQualityTrials({ status: "running", levels: [] });
     const useNative = isNativeEngine();
@@ -456,7 +523,7 @@ export function CompressView({
       for (const crf of crfs) {
         if (abortRef.current?.signal.aborted) break;
         const outName = `${baseName}-q${crf}.mp4`;
-        const codec = resolvedPlan.targetCodec === "h265" ? "h265" : "h264";
+        const codec = resolvedRecipe.targetCodec === "h265" ? "h265" : "h264";
         if (useNative) {
           const staged = stagedRef.current;
           const inputPath = sourcePathRef.current ?? staged?.tmpPath;
@@ -467,7 +534,7 @@ export function CompressView({
             outputPath: outPath,
             codec,
             crf,
-            stripAudio: resolvedPlan.audioHandling === "strip",
+            stripAudio: resolvedRecipe.audioHandling === "strip",
             faststart: true,
             durationSeconds: metadata.duration,
             onProgress: () => undefined,
@@ -483,7 +550,7 @@ export function CompressView({
             outputFileName: outName,
             codec,
             crf,
-            stripAudio: resolvedPlan.audioHandling === "strip",
+            stripAudio: resolvedRecipe.audioHandling === "strip",
             faststart: true,
             durationSeconds: metadata.duration,
             onProgress: () => undefined,
@@ -498,7 +565,7 @@ export function CompressView({
       diag.error("compress.quality", `quality trials failed: ${message}`);
       setQualityTrials((prev) => ({ ...prev, status: "error", error: message }));
     }
-  }, [file, metadata, resolvedPlan]);
+  }, [file, metadata, resolvedRecipe]);
 
 
   return (
@@ -607,21 +674,43 @@ export function CompressView({
                   </button>
                 ))}
               </div>
-              {resolvedPlan.ruleSource ? (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  <Zap className="mr-1 inline size-3 text-warning" aria-hidden />
-                  Plan:{" "}
-                  <span className="cursor-help underline decoration-dotted underline-offset-2" title={resolvedPlan.ruleSource}>
-                    {resolvedPlanLabel}
-                  </span>
-                  {removeAudioPlanned ? " · strip audio" : ""}
+              {removeAudioPlanned ? (
+                <p className="mt-2 text-[11px] text-muted-foreground">Audio will be stripped from the output.</p>
+              ) : null}
+              {recipeResult?.error && recipeResult.used === 'rule-engine' ? (
+                <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 px-2.5 py-1.5 text-[11px] text-warning" role="status">
+                  AI plan unavailable — used the rule engine ({recipeResult.error})
                 </p>
               ) : null}
             </div>
 
+            <PlanReview
+              recipe={resolvedRecipe}
+              sources={resolvedSources}
+              advancedMode={advancedMode}
+              onAdvancedModeChange={setAdvancedMode}
+              onRecipeChange={(next, changed) =>
+                setOverride({
+                  recipe: next,
+                  sources: { ...resolvedSources, [changed]: "you" },
+                })
+              }
+              userPresets={presets}
+              onApplyPreset={(preset) => {
+                const applied = applyPreset(preset);
+                setOverride({ recipe: applied.recipe, sources: applied.sources });
+              }}
+              onDeletePreset={deletePreset}
+              onSavePreset={(name) => {
+                void savePreset(name, resolvedRecipe);
+              }}
+              {...(metadata ? { metadata } : {})}
+              intentNotes={override ? [] : (recipeResult?.intentNotes ?? [])}
+            />
+
             <Button
               size="lg"
-              onClick={encodeNow}
+              onClick={() => void encodeNow()}
               disabled={status === "encoding" || !file || !metadata}
               className="self-stretch sm:self-start sm:min-w-56"
             >
@@ -807,8 +896,8 @@ export function CompressView({
             </summary>
             <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 font-mono text-[11px]">
               <dt className="text-muted-foreground">plan</dt><dd>{resolvedPlanLabel}</dd>
-              <dt className="text-muted-foreground">codec</dt><dd>{resolvedPlan.targetCodec} · CRF {resolvedPlan.crf} · {resolvedPlan.twoPass ? "two-pass" : "single-pass"}</dd>
-              <dt className="text-muted-foreground">audio</dt><dd>{removeAudioPlanned ? "stripped" : (resolvedPlan.audioHandling ?? "copy")}</dd>
+              <dt className="text-muted-foreground">codec</dt><dd>{resolvedRecipe.targetCodec} · CRF {resolvedRecipe.crf} · {resolvedRecipe.twoPass ? "two-pass" : "single-pass"}</dd>
+              <dt className="text-muted-foreground">audio</dt><dd>{removeAudioPlanned ? "stripped" : resolvedRecipe.audioHandling}</dd>
               {metadata ? (
                 <>
                   <dt className="text-muted-foreground">source</dt><dd>{metadata.width}×{metadata.height} · {metadata.duration.toFixed(2)}s · {metadata.videoCodec}{metadata.hasAudio ? " · audio" : ""}</dd>
@@ -816,6 +905,22 @@ export function CompressView({
               ) : null}
             </dl>
           </details>
+        ) : null}
+        {showModelModal ? (
+          <ModelRequiredModal
+            intent={intentText}
+            onModelReady={() => {
+              setShowModelModal(false);
+              bestEffortRef.current = false;
+              void encodeNow("smollm2-360m");
+            }}
+            onBestEffort={() => {
+              setShowModelModal(false);
+              bestEffortRef.current = true;
+              void encodeNow();
+            }}
+            onCancel={() => setShowModelModal(false)}
+          />
         ) : null}
       </div>
 
@@ -834,7 +939,9 @@ export function CompressView({
               ))}
             </ul>
             <p className="mt-3 text-[11px] leading-snug text-muted-foreground">
-              Estimates assume the WebM and H.264 variants. WebM typically wins on size; H.264 wins on device compatibility.
+              {variantSet.variants.length > 1
+                ? "Estimates assume the WebM and H.264 variants. WebM typically wins on size; H.264 wins on device compatibility."
+                : "Only the variant matching your intent is planned — clear the intent or mention WebM/MP4 to get both."}
             </p>
           </div>
         ) : null}

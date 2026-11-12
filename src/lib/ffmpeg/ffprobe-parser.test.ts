@@ -166,3 +166,34 @@ describe("parseFfprobeJson", () => {
     expect(result.id.length).toBeGreaterThan(0);
   });
 });
+describe("subtitle & audio stream extraction", () => {
+  const withStreams = (streams: object[]) =>
+    JSON.stringify({
+      streams,
+      format: { format_name: "matroska", duration: "612.5", bit_rate: "1600000", size: "100000000" },
+    });
+
+  it("extracts subtitle streams with lang, codec and title", () => {
+    const raw = withStreams([
+      { codec_type: "video", codec_name: "h264", width: 1920, height: 800, avg_frame_rate: "24000/1001", pix_fmt: "yuv420p" },
+      { codec_type: "audio", codec_name: "aac", bit_rate: "128000", tags: { language: "eng" } },
+      { index: 2, codec_type: "subtitle", codec_name: "subrip", tags: { language: "eng", title: "English" } },
+      { index: 3, codec_type: "subtitle", codec_name: "ass", tags: { language: "hin" } },
+    ]);
+    const parsed = parseFfprobeJson(raw, "input.mkv", 100000000);
+    expect(parsed.subtitleStreams).toEqual([
+      { index: 2, codec: "subrip", lang: "eng", title: "English" },
+      { index: 3, codec: "ass", lang: "hin" },
+    ]);
+    expect(parsed.audioLanguages).toEqual(["eng"]);
+  });
+
+  it("omits streams when there are no subtitles", () => {
+    const raw = withStreams([
+      { codec_type: "video", codec_name: "h264", width: 1280, height: 720, avg_frame_rate: "30/1" },
+    ]);
+    const parsed = parseFfprobeJson(raw, "input.mp4", 100000000);
+    expect(parsed.subtitleStreams).toBeUndefined();
+    expect(parsed.audioLanguages).toBeUndefined();
+  });
+});

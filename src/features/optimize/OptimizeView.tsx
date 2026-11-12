@@ -14,15 +14,21 @@ import type { VideoMetadata } from "@/types/media";
 import { Button } from "@/components/ui/button";
 import { getFfmpegService } from "@/lib/ffmpeg/service";
 import { isNativeEngine, nativeProbe, nativeEncode, nativeEncodeFile } from "@/lib/ffmpeg/native-engine";
-import { isTauri, tauriApi } from "@/lib/tauri";
+import { isTauri, tauriApi, checkLlm } from "@/lib/tauri";
 import { parseFfprobeJson } from "@/lib/ffmpeg/ffprobe-parser";
 import { useAiMode } from "@/lib/ai/use-ai-mode";
-import { resolvePlan } from "@/lib/ai/plan";
+import { resolveRecipe } from "@/lib/ai/plan";
+import { PlanReview } from "@/components/plan-review";
+import { ModelRequiredModal } from "@/components/model-required-modal";
+import { useUserPresets } from "@/lib/use-user-presets";
+import type { EncodeRecipe, RecipeSources } from "@/lib/ffmpeg/recipe";
 import { diag, captureError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
 import { Marquee } from "@/components/marquee";
 import { registerTask, updateTask, completeTask, failTask, cancelTask } from "@/lib/tasks/registry";
 import { estimateSizeBytes } from "@/lib/workflow";
+import { parseIntentConstraints, resolveOutputContainer, extensionFor } from "@/lib/ffmpeg/recipe";
+import { isModelCached } from "@/lib/ai/webllm";
 
 interface OptimizeCandidate {
   /** Browser flow only: the picked File. */
@@ -72,6 +78,12 @@ export function OptimizeView({
   const pickedDirRef = useRef<string | null>(null);
   const outputRootRef = useRef<string | null>(null);
   const aiMode = useAiMode();
+  const { presets: userPresets, advancedMode, setAdvancedMode, applyPreset, savePreset, deletePreset } = useUserPresets();
+  const [recipeResult, setRecipeResult] = useState<import("@/lib/ai/plan").ResolvedRecipeResult | null>(null);
+  const [override, setOverride] = useState<{ recipe: EncodeRecipe; sources: RecipeSources } | null>(null);
+  const [showModelModal, setShowModelModal] = useState(false);
+  const bestEffortRef = useRef(false);
+  const pendingModelActionRef = useRef<(() => void) | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   /** Set when the user cancels a bulk run; checked between queue iterations. */
   const bulkCancelledRef = useRef(false);
@@ -247,6 +259,47 @@ export function OptimizeView({
     setCandidates(candidates);
   }, []);
 
+  // Display recipe for the review table — resolved from the first probed candidate.
+  // Encode resolves per file (AI may tailor per file); user hand-edits/presets apply uniformly via `override`.
+  const firstProbed = useMemo(() => candidates.find((c) => c.metadata)?.metadata ?? null, [candidates]);
+  useEffect(() => {
+    if (!firstProbed) {
+      setRecipeResult(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      resolveRecipe(firstProbed, optimizeIntent.trim() || undefined, aiMode).then((result) => {
+        if (!cancelled) setRecipeResult(result);
+      });
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [firstProbed, optimizeIntent, aiMode]);
+
+  // Intent edit releases the preset/hand-edit override
+  const lastOptimizeIntentRef = useRef(optimizeIntent);
+  useEffect(() => {
+    if (lastOptimizeIntentRef.current !== optimizeIntent) {
+      lastOptimizeIntentRef.current = optimizeIntent;
+      setOverride(null);
+      bestEffortRef.current = false;
+    }
+  }, [optimizeIntent]);
+
+  const effectiveRecipe: EncodeRecipe = override?.recipe ?? recipeResult?.recipe ?? {
+    targetCodec: "h264",
+    crf: 26,
+    outputContainer: "auto",
+    audioHandling: "copy",
+    subtitleHandling: { mode: "copy" },
+    stripMetadata: false,
+    faststart: true,
+  };
+  const effectiveSources: RecipeSources = override?.sources ?? recipeResult?.sources ?? {};
+
   /** Folder Check-Up: probe every candidate so rows can show codec/res/bitrate and an estimated saving. */
   const runCheckUp = useCallback(async () => {
     setCheckUp("running");
@@ -283,6 +336,23 @@ export function OptimizeView({
     setCheckUp("done");
   }, [candidates]);
 
+  /** True when intent demands beyond rule-engine coverage and no local model is available. */
+  const shouldAskForModel = useCallback(async (): Promise<boolean> => {
+    if (bestEffortRef.current || override) return false;
+    const constraints = parseIntentConstraints(optimizeIntent.trim(), null);
+    if (!constraints.unhandled) return false;
+    if (aiMode === "rule-engine") return true;
+    try {
+      if (isTauri()) {
+        const status = await checkLlm("smollm2-360m");
+        return !status.ready;
+      }
+      return !(await isModelCached("smollm2-360m"));
+    } catch {
+      return true;
+    }
+  }, [aiMode, optimizeIntent, override]);
+
   const optimizeOne = useCallback(async (index: number, bulk: boolean = false): Promise<void> => {
     const candidate = candidates[index];
     if (!candidate) return;
@@ -299,6 +369,11 @@ export function OptimizeView({
     }
     const activeTaskId = batchTaskRef.current ?? singleTaskId;
 
+    if (await shouldAskForModel()) {
+      pendingModelActionRef.current = () => void optimizeOne(index, bulk);
+      setShowModelModal(true);
+      return;
+    }
     abortRef.current?.abort();
     abortRef.current = new AbortController();
 
@@ -362,17 +437,35 @@ export function OptimizeView({
         });
       }
 
-      // AI (when enabled) decides codec/CRF/audio per file; rule engine otherwise.
+      // AI (when enabled) decides the recipe per file; rule engine otherwise.
       let codec: "h264" | "vp9" | "h265" = "h264";
       let crf = 26;
-      let stripAudio = true;
+      let recipe: EncodeRecipe = {
+        targetCodec: "h264",
+        crf: 26,
+        outputContainer: "auto",
+        audioHandling: "strip",
+        subtitleHandling: { mode: "copy" },
+        stripMetadata: false,
+        faststart: true,
+      };
       if (metadata) {
-        const resolved = await resolvePlan(metadata, optimizeIntent.trim() || undefined, aiMode);
-        codec = resolved.plan.targetCodec;
-        crf = resolved.plan.crf;
-        stripAudio = resolved.plan.audioHandling === "strip";
+        if (override) {
+          recipe = { ...override.recipe };
+        } else {
+          const resolved = await resolveRecipe(metadata, optimizeIntent.trim() || undefined, aiMode);
+          recipe = resolved.recipe;
+        }
+        codec = recipe.targetCodec === "vp9" ? "vp9" : recipe.targetCodec === "h265" ? "h265" : "h264";
+        crf = recipe.crf;
       }
-      const ext = codec === "vp9" ? "webm" : "mp4";
+      const effectiveDuration =
+        recipe.trimEnd !== undefined
+          ? Math.max(0.1, recipe.trimEnd - (recipe.trimStart ?? 0))
+          : durationSeconds;
+      const recipeContainer = resolveOutputContainer(recipe, metadata);
+      const ext = recipeContainer === "auto" ? (codec === "vp9" ? "webm" : "mp4") : extensionFor(recipeContainer);
+      const faststart = recipe.faststart && (ext === "mp4" || ext === "mov");
       const planOutputName = `${base}_optimized.${ext}`;
 
       if (isFileMode) {
@@ -412,9 +505,14 @@ export function OptimizeView({
           outputPath: outAbsPath,
           codec,
           crf,
-          durationSeconds,
-          stripAudio,
-          faststart: ext === "mp4",
+          durationSeconds: effectiveDuration,
+          stripAudio: recipe.audioHandling === "strip",
+          audioHandling: recipe.audioHandling,
+          subtitleHandling: recipe.subtitleHandling,
+          stripMetadata: recipe.stripMetadata,
+          ...(recipe.trimStart !== undefined ? { trimStart: recipe.trimStart } : {}),
+          ...(recipe.trimEnd !== undefined ? { trimEnd: recipe.trimEnd } : {}),
+          faststart,
           signal: abortRef.current.signal,
           onProgress: setItemProgress,
         });
@@ -444,9 +542,14 @@ export function OptimizeView({
         outputFileName: planOutputName,
         codec,
         crf,
-        durationSeconds,
-        stripAudio,
-        faststart: ext === "mp4",
+        durationSeconds: effectiveDuration,
+        stripAudio: recipe.audioHandling === "strip",
+        audioHandling: recipe.audioHandling,
+        subtitleHandling: recipe.subtitleHandling,
+        stripMetadata: recipe.stripMetadata,
+        ...(recipe.trimStart !== undefined ? { trimStart: recipe.trimStart } : {}),
+        ...(recipe.trimEnd !== undefined ? { trimEnd: recipe.trimEnd } : {}),
+        faststart,
         signal: abortRef.current.signal,
       };
 
@@ -457,7 +560,8 @@ export function OptimizeView({
             onProgress: ({ progress }: { progress: number }) => setItemProgress(progress),
           });
 
-      const blob = new Blob([encoded.data as Uint8Array<ArrayBuffer>], { type: planOutputName.endsWith(".webm") ? "video/webm" : "video/mp4" });
+      const MIME: Record<string, string> = { mp4: "video/mp4", mov: "video/quicktime", mkv: "video/x-matroska", webm: "video/webm", avi: "video/x-msvideo" };
+      const blob = new Blob([encoded.data as Uint8Array<ArrayBuffer>], { type: MIME[ext] ?? "video/mp4" });
       if (batchTaskRef.current) {
         batchDoneRef.current += 1;
         updateTask(batchTaskRef.current, {
@@ -509,9 +613,15 @@ export function OptimizeView({
         ),
       );
     }
-  }, [candidates]);
+  }, [candidates, aiMode, override, optimizeIntent, shouldAskForModel]);
 
   const optimizeAll = useCallback(async () => {
+    const ask = await shouldAskForModel();
+    if (ask) {
+      pendingModelActionRef.current = () => void optimizeAll();
+      setShowModelModal(true);
+      return;
+    }
     bulkCancelledRef.current = false;
     setWorking(true);
     setError(null);
@@ -551,7 +661,7 @@ export function OptimizeView({
       }
       setWorking(false);
     }
-  }, [candidates, optimizeOne]);
+  }, [candidates, optimizeOne, shouldAskForModel]);
 
   const cancelCurrent = useCallback(() => {
     diag.info("optimize", "cancel requested for current encode");
@@ -671,7 +781,28 @@ export function OptimizeView({
             <FileVideo className="size-4" aria-hidden />
             Choose folder
           </Button>
-          {candidates.length > 0 ? (
+          {showModelModal ? (
+          <ModelRequiredModal
+            intent={optimizeIntent}
+            onModelReady={() => {
+              setShowModelModal(false);
+              bestEffortRef.current = false;
+              const action = pendingModelActionRef.current;
+              pendingModelActionRef.current = null;
+              action?.();
+            }}
+            onBestEffort={() => {
+              setShowModelModal(false);
+              bestEffortRef.current = true;
+              const action = pendingModelActionRef.current;
+              pendingModelActionRef.current = null;
+              action?.();
+            }}
+            onCancel={() => setShowModelModal(false)}
+          />
+        ) : null}
+
+        {candidates.length > 0 ? (
             <Button variant="secondary" onClick={() => void runCheckUp()} disabled={working || checkUp === "running"}>
               {checkUp === "running"
                 ? <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -724,10 +855,39 @@ export function OptimizeView({
             id="optimize-intent"
             value={optimizeIntent}
             onChange={(event) => setOptimizeIntent(event.target.value)}
-            placeholder='e.g. "smallest file, strip audio" or "keep quality for retina displays"'
+            placeholder='e.g. "keep the .mkv, strip audio" or "keep only english subs, smallest file"'
             className="mt-1 w-full rounded-md border border-border bg-background/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
+
+        {firstProbed ? (
+          <div className="max-w-xl">
+            <PlanReview
+              recipe={effectiveRecipe}
+              sources={effectiveSources}
+              advancedMode={advancedMode}
+              onAdvancedModeChange={setAdvancedMode}
+              onRecipeChange={(next, changed) =>
+                setOverride({ recipe: next, sources: { ...effectiveSources, [changed]: "you" } })
+              }
+              userPresets={userPresets}
+              onApplyPreset={(preset) => setOverride(applyPreset(preset))}
+              onDeletePreset={deletePreset}
+              onSavePreset={(name) => {
+                void savePreset(name, effectiveRecipe);
+              }}
+              metadata={firstProbed}
+              intentNotes={override ? [] : (recipeResult?.intentNotes ?? [])}
+            />
+            {recipeResult?.error && recipeResult.used === "rule-engine" ? (
+              <p className="mt-1.5 rounded-md border border-warning/40 bg-warning/10 px-2.5 py-1.5 text-[11px] text-warning" role="status">
+                AI plan unavailable — used the rule engine ({recipeResult.error})
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="max-w-xl text-[11px] text-muted-foreground">Run Check-Up to see the plan review table — it shows exactly what will happen before anything encodes.</p>
+        )}
 
         {error ? (
           <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
@@ -818,7 +978,16 @@ export function OptimizeView({
                       size="sm"
                       variant="secondary"
                       disabled={working}
-                      onClick={() => optimizeOne(index)}
+                      onClick={() => {
+                        void shouldAskForModel().then((ask) => {
+                          if (ask) {
+                            pendingModelActionRef.current = () => void optimizeOne(index);
+                            setShowModelModal(true);
+                          } else {
+                            void optimizeOne(index);
+                          }
+                        });
+                      }}
                     >
                       <Zap className="size-4" aria-hidden />
                       Press

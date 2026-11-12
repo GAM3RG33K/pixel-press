@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Cpu, HardDrive, Loader2, RefreshCw, Settings, X, CheckCircle2, AlertCircle } from "lucide-react";
+import { Cpu, HardDrive, Loader2, RefreshCw, Settings, X, CheckCircle2, AlertCircle, Archive, Download, Upload, FileJson } from "lucide-react";
 
 import { isTauri, cacheStats, clearCache, releaseFlavor, type CacheStats } from "@/lib/tauri";
 import { formatBytes } from "@/lib/format";
@@ -11,6 +11,7 @@ const SECTIONS = [
   { id: "engine", label: "Engine", Icon: Cpu },
   { id: "cache", label: "Cache", Icon: HardDrive },
   { id: "updates", label: "Updates", Icon: RefreshCw },
+  { id: "backup", label: "Backup", Icon: Archive },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
@@ -104,6 +105,8 @@ export function SettingsDrawer() {
                   </div>
                 ) : section === "cache" ? (
                   <CacheSection />
+                ) : section === "backup" ? (
+                  <BackupSection />
                 ) : (
                   <UpdatesSection />
                 )}
@@ -115,6 +118,204 @@ export function SettingsDrawer() {
         )
         : null}
     </>
+  );
+}
+
+function BackupSection() {
+  const [preview, setPreview] = useState<import("@/lib/config-backup").ImportPreview | null>(null);
+  const [importedFile, setImportedFile] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const onExport = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const { exportConfigJson, CONFIG_FILE_NAME } = await import("@/lib/config-backup");
+      const json = await exportConfigJson();
+      if (isTauri()) {
+        // Tauri webview can't trigger browser blob downloads — write straight into ~/Downloads.
+        const { downloadDir, join } = await import("@tauri-apps/api/path");
+        const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+        const { invoke } = await import("@tauri-apps/api/core");
+        const path = await join(await downloadDir(), CONFIG_FILE_NAME);
+        await writeTextFile(path, json);
+        void invoke("reveal_path", { path }).catch(() => undefined);
+        setMessage(`Config exported to ${path}`);
+        return;
+      }
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = CONFIG_FILE_NAME;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setMessage("Config exported — pixel-press-config.json downloaded.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const onImportFile = useCallback(async (file: File) => {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const { previewImportJson } = await import("@/lib/config-backup");
+      const json = await file.text();
+      const result = await previewImportJson(json);
+      if (!result.ok) {
+        setError(result.error ?? "Not a valid pixel-press config file.");
+        setPreview(null);
+        return;
+      }
+      setImportedFile(file.name);
+      setPreview(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const onConfirmImport = useCallback(async () => {
+    if (!preview) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { applyImportPreview } = await import("@/lib/config-backup");
+      await applyImportPreview(preview);
+      setMessage(
+        preview.noop
+          ? "Nothing to import — config already matches."
+          : `Imported ${preview.presetsToAdd.length} preset(s) and ${Object.keys(preview.preferencesToApply).length} setting(s).`,
+      );
+      setPreview(null);
+      setImportedFile(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [preview]);
+
+  return (
+    <div className="space-y-4">
+      <div className="press-paper rounded-xl p-4">
+        <p className="text-sm font-semibold tracking-tight">Backup &amp; Restore</p>
+        <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+          Export everything pixel-press knows about your preferences as one JSON file. Re-import it here or on another machine.
+        </p>
+
+        <div className="mt-3 rounded-lg border border-border/60 bg-secondary/30 p-3 text-[11px] text-muted-foreground">
+          <p className="font-medium text-foreground">Included</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            <li>Your presets (Plan review → Save as preset)</li>
+            <li>AI &amp; engine preferences (mode, onboarding)</li>
+            <li>Advanced user mode flag</li>
+            <li>Default container &amp; auto-strip-audio preference</li>
+          </ul>
+          <p className="mt-2 border-t border-border/60 pt-2 text-[10px] text-muted-foreground/80">
+            Not included: downloaded model weights (re-download from Local AI) · diagnostics logs · encode history · machine-local file paths
+          </p>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void onExport()}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-[11px] font-semibold text-primary-foreground transition-[filter] hover:brightness-110 disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Download className="size-3.5" aria-hidden />}
+            Export config…
+          </button>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+          >
+            <Upload className="size-3.5" aria-hidden />
+            Import config…
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void onImportFile(file);
+              e.target.value = "";
+            }}
+          />
+        </div>
+
+        {error ? (
+          <p role="alert" className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">{error}</p>
+        ) : null}
+        {message ? (
+          <p role="status" className="mt-2 rounded-md border border-success/40 bg-success/10 px-3 py-2 text-[11px] text-success">{message}</p>
+        ) : null}
+      </div>
+
+      {preview ? (
+        <div className="press-paper rounded-xl border border-warning/40 p-4">
+          <p className="flex items-center gap-2 text-sm font-semibold tracking-tight text-warning">
+            <FileJson className="size-4" aria-hidden />
+            Import preview — {importedFile}
+          </p>
+          <div className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+            <p className="text-foreground">Nothing is applied until you confirm. Settings listed here will be replaced:</p>
+            <ul className="mt-1 list-disc pl-4">
+              {Object.entries(preview.preferencesToApply).map(([key, value]) => (
+                <li key={key}><code className="text-foreground">{key}</code> → <code className="text-foreground">{String(value)}</code></li>
+              ))}
+              {Object.keys(preview.preferencesToApply).length === 0 ? <li>No scalar settings change</li> : null}
+            </ul>
+            <p className="mt-2 text-foreground">Presets to add ({preview.presetsToAdd.length}):</p>
+            <ul className="mt-1 list-disc pl-4">
+              {preview.presetsToAdd.map((preset) => (
+                <li key={preset.id}>{preset.name} <span className="text-muted-foreground/70">({preset.recipe.targetCodec} · CRF {preset.recipe.crf})</span></li>
+              ))}
+              {preview.presetsToAdd.length === 0 ? <li>None — config has no (new) presets</li> : null}
+            </ul>
+            {preview.renamedPresets.length > 0 ? (
+              <p className="mt-2 text-[10px] text-warning/90">Renamed on collision: {preview.renamedPresets.join(" · ")}</p>
+            ) : null}
+            <p className="mt-2 text-[10px] text-muted-foreground/80">Existing presets are never deleted or overwritten.</p>
+          </div>
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => { setPreview(null); setImportedFile(null); }}
+              className="rounded-md border border-border px-3 py-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void onConfirmImport()}
+              disabled={busy}
+              className="rounded-md bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground hover:brightness-110 disabled:opacity-50"
+            >
+              {busy ? "Importing…" : preview.noop ? "Nothing to import" : "Confirm import"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <p className="px-1 text-[10px] leading-snug text-muted-foreground/70">
+        Format: <code>pixel-press-config.json</code> · schemaVersion 1 · plain human-readable JSON
+      </p>
+    </div>
   );
 }
 

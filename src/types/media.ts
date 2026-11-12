@@ -4,9 +4,17 @@
  * the UI and the FFmpeg service.
  */
 
-export type ContainerFormat = "mp4" | "webm" | "mov";
+export type ContainerFormat = "mp4" | "webm" | "mov" | "mkv" | "avi";
 
 export type TargetCodec = "h265" | "h264" | "vp9" | "av1";
+
+export interface SubtitleStream {
+  index: number;
+  codec?: string;
+  /** ISO 639-2 language tag as reported by ffprobe (e.g. "eng"), if any. */
+  lang?: string;
+  title?: string;
+}
 
 export interface VideoMetadata {
   id: string;
@@ -23,6 +31,10 @@ export interface VideoMetadata {
   hasAudio: boolean;
   audioCodec?: string;
   audioBitrate?: number;
+  /** Audio stream language tags (ISO 639-2), in stream order. */
+  audioLanguages?: string[];
+  /** Subtitle stream summary from ffprobe — drives "keep only <lang>" subtitle handling. */
+  subtitleStreams?: SubtitleStream[];
 }
 
 export interface ProgressSample {

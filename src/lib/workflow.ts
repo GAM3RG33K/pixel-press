@@ -1,6 +1,7 @@
 import type { CompressionPlan } from "@/skills/compress-video-rules";
-import type { TargetCodec, VideoMetadata } from "@/types/media";
+import type { ContainerFormat, TargetCodec, VideoMetadata } from "@/types/media";
 import { evaluateRules } from "@/skills/compress-video-rules";
+import { resolveOutputContainer, type EncodeRecipe } from "@/lib/ffmpeg/recipe";
 
 export interface Preset {
   id: string;
@@ -44,12 +45,12 @@ export const PRESETS: Preset[] = [
 
 export interface PlannedVariant {
   label: string;
-  container: "mp4" | "webm";
+  container: ContainerFormat;
   codec: TargetCodec;
   requestedCodec: TargetCodec;
   crf: number;
   preset?: string | undefined;
-  targetScale?: { width: number; height: number } | undefined;
+  targetScale?: { width?: number; height?: number } | undefined;
   stripAudio: boolean;
   twoPass: boolean;
   estimatedSizeBytes: number;
@@ -110,19 +111,42 @@ export interface VariantSet {
   variants: PlannedVariant[];
 }
 
+/** Which outputs the current intent/plan actually asks for. */
+export type VariantSelection = "mp4" | "webm" | "both";
+
+/**
+ * Decides which variants to emit from the intent text + plan codec.
+ *  - intent/plan points at WebM/VP9 (and not MP4) → webm only
+ *  - intent/plan points at MP4/H.264/H.265 (and not WebM) → mp4 only
+ *  - anything else (no clear signal, or both mentioned) → both
+ */
+export function selectVariants(plan: CompressionPlan, intent?: string): VariantSelection {
+  const text = (intent ?? "").toLowerCase();
+  const webmSignal = /webm|vp9|av1/.test(text);
+  const mp4Signal = /mp4|h\.?264|x264|h\.?265|x265|universal|compatib/.test(text);
+  if (plan.targetCodec === "vp9" && !mp4Signal) return "webm";
+  if (webmSignal && !mp4Signal) return "webm";
+  if (mp4Signal && !webmSignal) return "mp4";
+  return "both";
+}
+
 /**
  * Builds the user-facing variant set (MP4 fallback + WebM) from the rule engine
- * output. Always emits an MP4 (H.264) variant plus a WebM (VP9) variant
- * unless the rule engine produced a different plan.
+ * output. Emits MP4 and/or WebM depending on the intent + plan codec —
+ * see {@link selectVariants}. Falls back to both when there is no clear signal.
  */
 export function buildWorkbenchVariants(
   plan: CompressionPlan,
   sourceBytes: number,
-  metadata: VideoMetadata | null,
+  _metadata: VideoMetadata | null,
   baseName: string,
+  intent?: string,
+  recipe?: EncodeRecipe,
 ): VariantSet {
-  const scale = plan.targetScale;
-  const stripAudio = plan.audioHandling === "strip";
+  const scale = recipe?.targetScale ?? plan.targetScale;
+  const stripAudio = recipe
+    ? recipe.audioHandling === "strip"
+    : plan.audioHandling === "strip";
 
   const variants: PlannedVariant[] = [
     {
@@ -151,13 +175,71 @@ export function buildWorkbenchVariants(
     },
   ];
 
-  // Respect preserveKeyframes output preference for web hero loops
-  if (metadata && metadata.fps > 30) {
-    const capped = variants.map((v): PlannedVariant => ({ ...v }));
-    return { baseName, variants: capped };
+  const recipeContainer = recipe ? resolveOutputContainer(recipe, _metadata) : "auto";
+  const containerLabel: Record<ContainerFormat, string> = {
+    mp4: "Universal MP4",
+    mov: "QuickTime (.mov)",
+    mkv: "Matroska (.mkv)",
+    webm: "WebM",
+    avi: "AVI",
+  };
+  const codecLabel = (codec: TargetCodec) =>
+    codec === "vp9" ? "VP9" : codec === "h265" ? "H.265" : codec === "av1" ? "AV1" : "H.264";
+  const singleVariant = (container: ContainerFormat, codec: TargetCodec, crf: number, keepLabel: string): VariantSet => {
+    const effectiveCodec: TargetCodec = container === "webm" && codec !== "vp9" && codec !== "av1" ? "vp9" : codec;
+    return {
+      baseName,
+      variants: [
+        {
+          label: `${containerLabel[container]} (${codecLabel(effectiveCodec)} · ${keepLabel})`,
+          container,
+          codec: effectiveCodec,
+          requestedCodec: codec,
+          crf,
+          targetScale: scale,
+          stripAudio,
+          twoPass: recipe?.twoPass ?? plan.twoPass ?? false,
+          estimatedSizeBytes: estimateSizeBytes(sourceBytes, crf, effectiveCodec),
+          ffmpegFlags: ffmpegFlags(effectiveCodec, crf),
+        },
+      ],
+    };
+  };
+
+  if (recipeContainer !== "auto") {
+    // Recipe pinned a single container (explicit intent or preset) — emit exactly one variant.
+    return singleVariant(
+      recipeContainer as ContainerFormat,
+      recipe!.targetCodec,
+      recipe!.crf,
+      recipe!.outputContainer === "same" ? "keep format" : "as requested",
+    );
   }
 
-  return { baseName, variants };
+  // 'auto' with decisive hands on the quality knobs — honor them exactly,
+  // don't silently reinterpret as a dual output with shifted CRFs:
+  //   VP9/AV1 codec   → single WebM
+  //   H.265 codec     → single MP4 (hvc1)
+  //   CRF set by hand (≠ plan) → single MP4 at exactly that CRF
+  if (recipe) {
+    if (recipe.targetCodec === "vp9" || recipe.targetCodec === "av1") {
+      return singleVariant("webm", recipe.targetCodec, recipe.crf, "your codec");
+    }
+    if (recipe.targetCodec === "h265") {
+      return singleVariant("mp4", "h265", recipe.crf, "your codec");
+    }
+    if (recipe.crf !== plan.crf) {
+      return singleVariant("mp4", recipe.targetCodec, recipe.crf, "your CRF");
+    }
+  }
+
+  const selection = selectVariants(plan, intent);
+  const filtered =
+    selection === "both"
+      ? variants
+      : variants.filter((v) => (selection === "webm" ? v.container === "webm" : v.container === "mp4"));
+
+  return { baseName, variants: filtered };
 }
 
 export function isAudioKept(plan: CompressionPlan): boolean {

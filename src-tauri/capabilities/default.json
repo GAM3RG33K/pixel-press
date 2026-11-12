@@ -2,12 +2,15 @@
   "$schema": "../gen/schemas/schema.json",
   "identifier": "default",
   "description": "Default capabilities for the main window.",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:event:default",
     "fs:allow-app-read-recursive",
     "fs:allow-app-write-recursive",
-    "dialog:default"
+    "dialog:default",
+    "fs:allow-download-write-recursive"
   ]
 }

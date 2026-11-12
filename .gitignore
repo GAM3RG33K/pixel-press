@@ -71,3 +71,6 @@ test-results/
 *.avi
 *.webm
 !/public/**/*.webm
+
+# brainstorm companion mockups
+.superpowers/

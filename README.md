@@ -2,7 +2,7 @@
 
 A **local-first, local-only** video compressor available as a native desktop app. FFmpeg and the local LLM are installed on first launch via a tested download manager; nothing is uploaded anywhere — every byte is processed on your device.
 
-> Status: Tauri v2 desktop app on `main`; CI release pipeline live (4 shipping targets, tag-push triggered). Recent additions: tasks-in-progress tray, huge-file smart probe, consolidated cache + Settings drawer (Engine | Cache | Updates), built-in update check. PWA milestone preserved at `v0.0.0-pwa-milestone` on `main`.
+> Status: Tauri v2 desktop app on `main`; CI release pipeline live (4 shipping targets, tag-push triggered). Recent additions: tasks-in-progress tray, huge-file smart probe, consolidated cache + Settings drawer (Engine | Cache | Updates | Backup), built-in update check, intent-first plan review with Advanced user mode, named presets, and config Backup & Restore. PWA milestone preserved at `v0.0.0-pwa-milestone` on `main`.
 
 ## Why this overhaul now
 
@@ -63,15 +63,16 @@ No silent updates; you always see what will be installed, and you can install la
 The home is one drop surface — no tabs. Drop **one video** (smallest sensible encode) or **a folder / several videos** (folder Check-Up, then one pass, mirrored into `pixel-pressed-<timestamp>/`). Goal chips — Smallest file · Good enough quality · Social 1080p · Keep it crisp — pre-pick the intent in plain words.
 
 1. Drop a video → native `ffprobe` reads metadata from the file's headers in milliseconds — even for 10 GB files (huge files encode straight from the untouched source path; no in-memory copy).
-2. The deterministic rule engine (default; always available) picks the codec/CRF. An optional local LLM (downloaded if you choose) does the same from your natural-language intent.
-3. Codec fallbacks H.264 ↔ H.265 swap with a loud notice when one is unavailable.
-4. A bottom-center tray shows every running task (single-file compress, folder shrink, first-launch downloads); click a row to jump back into the flow or cancel it — work keeps running when you go back to the press.
-5. Outputs:
+2. The deterministic rule engine (default; always available) picks the codec/CRF; explicit tokens in your intent (keep the .mkv, strip audio, keep only English subs, trim 0:30–1:00, strip metadata) are honored as hard constraints over whatever the AI proposes. An optional local LLM (downloaded if you choose) fills in the rest from your plain-language intent.
+3. A **Plan review** panel shows exactly what will happen — every parameter with a ● you / ● AI / ● rule / ● preset badge, CRF explained inline. Read-only by default; flip **Advanced user mode** to edit (dropdowns, CRF slider, toggles — all allowlisted to ffmpeg args). Hand-edits lock against re-parsing; hand-picked codec/CRF pins the output exactly (no dual-file surprise).
+4. Codec fallbacks H.264 ↔ H.265 swap with a loud notice when one is unavailable.
+5. A bottom-center tray shows every running task (single-file compress, folder shrink, first-launch downloads); click a row to jump back into the flow or cancel it — work keeps running when you go back to the press.
+6. Outputs match the plan: one pinned-container file, **or** the default dual pair —
    - `video-h264.mp4` (Universal H.264)
    - `video-vp9.webm` (WebM)
-6. After encode: a savings-% hero, before/after bar, one-click downloads, a "Try 3 quality levels" panel, and optional `<video>` snippet copy.
+7. Advanced users can save the current recipe as a named preset (★ chips), and **Settings → Backup** exports the whole config (presets + preferences, `pixel-press-config.json`) with preview-diff import. After encode: a savings-% hero, before/after bar, one-click downloads, a "Try 3 quality levels" panel, and optional `<video>` snippet copy.
 
-Long filenames animate as a marquee inside their container — sibling text (buttons, %, MB/s, Cancel) always stays fully visible. Settings (gear icon) holds Engine diagnostics and a Cache section with live usage + wipe.
+Long filenames animate as a marquee inside their container — sibling text (buttons, %, MB/s, Cancel) always stays fully visible. Settings (gear icon) holds Engine diagnostics, a Cache section with live usage + wipe, and Backup & Restore.
 
 ## Stack
 

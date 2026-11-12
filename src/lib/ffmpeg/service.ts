@@ -44,6 +44,11 @@ export interface EncodeOptions {
   stripAudio?: boolean;
   faststart?: boolean;
   extraArgs?: string[];
+  audioHandling?: import("./recipe").AudioHandling;
+  subtitleHandling?: import("./recipe").SubtitleHandling;
+  stripMetadata?: boolean;
+  trimStart?: number;
+  trimEnd?: number;
   durationSeconds: number;
   onProgress?: (event: EncodeProgressEvent) => void;
   signal?: AbortSignal;
@@ -512,6 +517,21 @@ export class FfmpegService {
             : {}),
           ...(options.extraArgs !== undefined
             ? { extraArgs: options.extraArgs }
+            : {}),
+          ...(options.audioHandling !== undefined
+            ? { audioHandling: options.audioHandling }
+            : {}),
+          ...(options.subtitleHandling !== undefined
+            ? { subtitleHandling: options.subtitleHandling }
+            : {}),
+          ...(options.stripMetadata !== undefined
+            ? { stripMetadata: options.stripMetadata }
+            : {}),
+          ...(options.trimStart !== undefined
+            ? { trimStart: options.trimStart }
+            : {}),
+          ...(options.trimEnd !== undefined
+            ? { trimEnd: options.trimEnd }
             : {}),
         });
       },

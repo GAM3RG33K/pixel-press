@@ -10,6 +10,8 @@ interface FfprobeStream {
   pix_fmt?: string;
   bit_rate?: string;
   duration?: string;
+  index?: number;
+  tags?: { language?: string; title?: string };
 }
 
 interface FfprobeFormat {
@@ -65,6 +67,21 @@ export function parseFfprobeJson(
   }
 
   const audio = streams.find((stream) => stream.codec_type === "audio");
+  const audioLanguages = streams
+    .filter((stream) => stream.codec_type === "audio")
+    .map((stream) => stream.tags?.language ?? "")
+    .filter((lang) => lang.length > 0);
+  const subtitleStreams = streams
+    .filter((stream) => stream.codec_type === "subtitle")
+    .map((stream) => {
+      const entry: NonNullable<VideoMetadata["subtitleStreams"]>[number] = {
+        index: stream.index ?? -1,
+      };
+      if (stream.codec_name) entry.codec = stream.codec_name;
+      if (stream.tags?.language) entry.lang = stream.tags.language;
+      if (stream.tags?.title) entry.title = stream.tags.title;
+      return entry;
+    });
   const format = parsed.format ?? {};
 
   metadataCounter += 1;
@@ -88,6 +105,8 @@ export function parseFfprobeJson(
     const audioBitrate = toNumber(audio.bit_rate);
     if (audioBitrate > 0) metadata.audioBitrate = audioBitrate;
   }
+  if (audioLanguages.length > 0) metadata.audioLanguages = audioLanguages;
+  if (subtitleStreams.length > 0) metadata.subtitleStreams = subtitleStreams;
 
   return metadata;
 }

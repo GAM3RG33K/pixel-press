@@ -187,9 +187,66 @@ describe("containerFromPath", () => {
     expect(containerFromPath("/out.WEBM")).toBe("webm");
   });
 
-  it("defaults unknown extensions to mp4", () => {
-    expect(containerFromPath("/out.avi")).toBe("mp4");
-    expect(containerFromPath("/out.mkv")).toBe("mp4");
+  it("maps known extensions and defaults unknown to mp4", () => {
+    expect(containerFromPath("/out.avi")).toBe("avi");
+    expect(containerFromPath("/out.mkv")).toBe("mkv");
+    expect(containerFromPath("/out.webm")).toBe("webm");
+    expect(containerFromPath("/out.mov")).toBe("mov");
     expect(containerFromPath("out")).toBe("mp4");
+  });
+});
+
+describe("container & subtitle/audio handling", () => {
+  const base = { inputPath: "/in.mkv", outputPath: "/out.mkv", codec: "h264" as const, crf: 26 };
+
+  it("emits mkv container args with audio copy", () => {
+    const args = buildEncodeArgs({ ...base, audioHandling: "copy" });
+    expect(args).toContain("-c:a");
+    expect(args).toContain("copy");
+    expect(args[args.length - 1]).toBe("/out.mkv");
+  });
+
+  it("strips subtitles with -sn", () => {
+    const args = buildEncodeArgs({ ...base, subtitleHandling: { mode: "strip" } });
+    expect(args).toContain("-sn");
+  });
+
+  it("copies subtitles with container-appropriate codec (mkv → copy, mp4 → mov_text)", () => {
+    expect(buildEncodeArgs({ ...base, subtitleHandling: { mode: "copy" } })).toContain("copy");
+    const mp4 = buildEncodeArgs({ ...base, outputPath: "/out.mp4", subtitleHandling: { mode: "copy" } });
+    expect(mp4).toContain("mov_text");
+  });
+
+  it("maps only the requested subtitle languages", () => {
+    const args = buildEncodeArgs({
+      ...base,
+      outputPath: "/out.mkv",
+      subtitleHandling: { mode: "only", languages: ["eng"] },
+    });
+    expect(args).toContain("-map");
+    expect(args).toContain("0:s:m:language:eng?");
+  });
+
+  it("strips metadata with -map_metadata -1", () => {
+    const args = buildEncodeArgs({ ...base, stripMetadata: true });
+    const i = args.indexOf("-map_metadata");
+    expect(i).toBeGreaterThan(-1);
+    expect(args[i + 1]).toBe("-1");
+  });
+
+  it("trims with input seek -ss and -t duration", () => {
+    const args = buildEncodeArgs({ ...base, trimStart: 30, trimEnd: 90 });
+    const ss = args.indexOf("-ss");
+    expect(ss).toBeGreaterThan(-1);
+    expect(args[ss + 1]).toBe("30");
+    const t = args.indexOf("-t");
+    expect(t).toBeGreaterThan(-1);
+    expect(args[t + 1]).toBe("60");
+  });
+
+  it("does not emit -ss/-t for full-length encodes", () => {
+    const args = buildEncodeArgs(base);
+    expect(args).not.toContain("-ss");
+    expect(args).not.toContain("-t");
   });
 });

@@ -17,11 +17,30 @@ import type { AIMode } from '../settings';
 import { diag } from '../diagnostics';
 import { isTauri, checkLlm, planWithNativeLlm } from '../tauri';
 import { planWithAI } from './webllm';
+import {
+  applyIntentConstraints,
+  parseIntentConstraints,
+  recipeFromPlan,
+  type RecipeSources,
+  type EncodeRecipe,
+} from '../ffmpeg/recipe';
 
 export interface ResolvedPlan {
   plan: CompressionPlan;
   used: 'ai' | 'rule-engine';
   error?: string;
+}
+
+export interface ResolvedRecipeResult {
+  recipe: EncodeRecipe;
+  sources: RecipeSources;
+  used: 'ai' | 'rule-engine';
+  plan: CompressionPlan;
+  error?: string;
+  /** True when the intent asked for something beyond rule-engine coverage and no model handled it — show the download modal. */
+  needsModel: boolean;
+  /** Human-readable notes the deterministic parser extracted from the intent. */
+  intentNotes: string[];
 }
 
 /** The only model we ship for on-device inference. */
@@ -127,4 +146,32 @@ export async function resolvePlan(
     aiMode as 'smollm2-360m' | 'qwen2-0.5b' | 'rule-engine',
   );
   return web;
+}
+
+/**
+ * Resolve a recipe: AI/rules plan → hard deterministic intent constraints.
+ * Explicit user tokens in the intent always win; ambiguous prose stays with AI.
+ * Sets `needsModel` when the intent clearly requests a customization the
+ * rule engine cannot express and no model actually handled it.
+ */
+export async function resolveRecipe(
+  metadata: VideoMetadata,
+  intent: string | undefined,
+  aiMode: AIMode,
+): Promise<ResolvedRecipeResult> {
+  const constraints = parseIntentConstraints(intent ?? '', metadata);
+  const planResult = await resolvePlan(metadata, intent, aiMode);
+  const base = recipeFromPlan(planResult.plan, planResult.used);
+  const constrained = applyIntentConstraints(base, intent ?? '', metadata);
+  const modelHandled = planResult.used === 'ai';
+  const needsModel = constraints.unhandled && !modelHandled;
+  return {
+    recipe: constrained.recipe,
+    sources: constrained.sources,
+    used: planResult.used,
+    plan: planResult.plan,
+    ...(planResult.error !== undefined ? { error: planResult.error } : {}),
+    needsModel,
+    intentNotes: constrained.intentNotes,
+  };
 }

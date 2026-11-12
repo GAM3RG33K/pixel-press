@@ -1,4 +1,5 @@
 import type { ContainerFormat, TargetCodec } from "@/types/media";
+import type { AudioHandling, SubtitleHandling } from "./recipe";
 
 export interface EncodeArgsInput {
   inputPath: string;
@@ -13,6 +14,15 @@ export interface EncodeArgsInput {
   stripAudio?: boolean;
   faststart?: boolean;
   extraArgs?: string[];
+  /** Prefer `audioHandling` over `stripAudio` when both are set. */
+  audioHandling?: AudioHandling;
+  /** Subtitle stream handling. Defaults to `copy` (ffmpeg picks one sub stream per type). */
+  subtitleHandling?: SubtitleHandling;
+  /** Strip global metadata (`-map_metadata -1`). */
+  stripMetadata?: boolean;
+  /** Trim window in seconds (input seeking, before -i). */
+  trimStart?: number;
+  trimEnd?: number;
 }
 
 export function codecArgs(
@@ -64,17 +74,44 @@ export function codecArgs(
 export function audioArgs(
   container: ContainerFormat,
   stripAudio: boolean,
+  audioHandling?: AudioHandling,
 ): string[] {
-  if (stripAudio) return ["-an"];
+  const handling: AudioHandling = audioHandling ?? (stripAudio ? "strip" : "encode");
+  if (handling === "strip") return ["-an"];
+  if (handling === "copy") return ["-c:a", "copy"];
   switch (container) {
     case "webm":
       // 5.1(side) / 7.1 inputs can't feed libopus's default mapping family;
       // always downmix to stereo — universally playable for web autoplay.
       return ["-c:a", "libopus", "-b:a", "96k", "-ac", "2"];
+    case "mkv":
+    case "avi":
     case "mp4":
     case "mov":
       return ["-c:a", "aac", "-b:a", "128k"];
   }
+}
+
+/** Subtitle codec per container — MP4/MOV need mov_text for text subs; others copy. */
+function subtitleArgs(
+  container: ContainerFormat,
+  handling: SubtitleHandling,
+): string[] {
+  if (handling.mode === "strip") return ["-sn"];
+  if (handling.mode === "copy") {
+    return container === "mp4" || container === "mov"
+      ? ["-c:s", "mov_text"]
+      : ["-c:s", "copy"];
+  }
+  // only: keep subtitle streams whose language matches one of the requested tags
+  const langs = handling.languages.map((l) => l.toLowerCase());
+  const subCodec = container === "mp4" || container === "mov" ? "mov_text" : "copy";
+  const args: string[] = [];
+  for (const lang of langs) {
+    args.push("-map", `0:s:m:language:${lang}?`);
+  }
+  args.push("-c:s", subCodec);
+  return args;
 }
 
 /**
@@ -104,6 +141,10 @@ export function containerFromPath(outputPath: string): ContainerFormat {
       return "webm";
     case "mov":
       return "mov";
+    case "mkv":
+      return "mkv";
+    case "avi":
+      return "avi";
     default:
       return "mp4";
   }
@@ -111,7 +152,20 @@ export function containerFromPath(outputPath: string): ContainerFormat {
 
 export function buildEncodeArgs(input: EncodeArgsInput): string[] {
   const container = containerFromPath(input.outputPath);
-  const args: string[] = ["-hide_banner", "-i", input.inputPath];
+  const args: string[] = ["-hide_banner"];
+
+  // Input seek for trim windows — fast and accurate enough for re-encodes.
+  if (input.trimStart !== undefined && input.trimStart > 0) {
+    args.push("-ss", String(input.trimStart));
+  }
+
+  args.push("-i", input.inputPath);
+
+  if (input.trimEnd !== undefined) {
+    const start = input.trimStart ?? 0;
+    const duration = Math.max(0, input.trimEnd - start);
+    if (duration > 0) args.push("-t", String(duration));
+  }
 
   const filter = resolveScaleFilter(input);
   if (filter) {
@@ -122,8 +176,26 @@ export function buildEncodeArgs(input: EncodeArgsInput): string[] {
     args.push("-r", String(input.fps));
   }
 
+  // When keeping only specific subtitle languages we must take control of the
+  // stream mapping; otherwise let ffmpeg default-map video/audio/subs.
+  const subHandling = input.subtitleHandling ?? { mode: "copy" as const };
+  const explicitSubMap = subHandling.mode === "only";
+  const audioStripped =
+    input.audioHandling !== undefined
+      ? input.audioHandling === "strip"
+      : Boolean(input.stripAudio);
+  if (explicitSubMap) {
+    args.push("-map", "0:v");
+    if (!audioStripped) args.push("-map", "0:a?");
+  }
+
   args.push(...codecArgs(input.codec, input.crf, input.preset));
-  args.push(...audioArgs(container, Boolean(input.stripAudio)));
+  args.push(...audioArgs(container, Boolean(input.stripAudio), input.audioHandling));
+  args.push(...subtitleArgs(container, subHandling));
+
+  if (input.stripMetadata) {
+    args.push("-map_metadata", "-1");
+  }
 
   if (input.faststart && (container === "mp4" || container === "mov")) {
     args.push("-movflags", "+faststart");

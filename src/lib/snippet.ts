@@ -10,7 +10,7 @@
 export interface SnippetVariant {
   fileName: string;
   path: string;
-  container: "mp4" | "webm";
+  container: string;
   width?: number | undefined;
   height?: number | undefined;
   sizeBytes: number;

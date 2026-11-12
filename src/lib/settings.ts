@@ -9,11 +9,24 @@ import { createStore, get, set, del } from "idb-keyval";
 
 export type AIMode = 'rule-engine' | 'smollm2-360m' | 'qwen2-0.5b';
 
+export interface UserPreset {
+  id: string;
+  name: string;
+  /** ISO-8601 creation time. */
+  createdAt: string;
+  /** Full recipe snapshot — applying a preset is a bundle of hand-edits. */
+  recipe: import('./ffmpeg/recipe').EncodeRecipe;
+}
+
 export interface UserPreferences {
   aiMode: AIMode;
   autoStripAudio: boolean;
   defaultContainer: 'mp4' | 'webm';
   onboardingCompleted: boolean;
+  /** Plan-review table rows are editable only when true. Default OFF = strictly read-only. */
+  advancedUserMode: boolean;
+  /** User-saved recipe presets (advanced mode). */
+  presets: UserPreset[];
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -21,6 +34,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   autoStripAudio: true,
   defaultContainer: 'webm',
   onboardingCompleted: false,
+  advancedUserMode: false,
+  presets: [],
 };
 
 const store = createStore('pixel-press', 'settings');

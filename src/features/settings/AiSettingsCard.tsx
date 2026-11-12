@@ -36,6 +36,8 @@ export function AiSettingsCard() {
     autoStripAudio: true,
     defaultContainer: 'webm',
     onboardingCompleted: true,
+    advancedUserMode: false,
+    presets: [],
   });
   const [status, setStatus] = useState<string | null>(null);
   const [selected, setSelected] = useState<AIMode>('rule-engine');
@@ -167,6 +169,8 @@ export function AiSettingsCard() {
       autoStripAudio: true,
       defaultContainer: 'webm',
       onboardingCompleted: true,
+      advancedUserMode: false,
+      presets: [],
     });
     setSelected('rule-engine');
     setStatus('Preferences reset to defaults.');

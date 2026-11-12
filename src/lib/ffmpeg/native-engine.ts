@@ -203,6 +203,11 @@ export interface NativeEncodeFileOptions {
   stripAudio?: boolean;
   faststart?: boolean;
   extraArgs?: string[];
+  audioHandling?: import("./recipe").AudioHandling;
+  subtitleHandling?: import("./recipe").SubtitleHandling;
+  stripMetadata?: boolean;
+  trimStart?: number;
+  trimEnd?: number;
   durationSeconds: number;
   signal?: AbortSignal;
   onProgress?: (progress: number) => void;
@@ -238,6 +243,11 @@ export async function nativeEncodeFile(options: NativeEncodeFileOptions): Promis
     ...(options.stripAudio !== undefined ? { stripAudio: options.stripAudio } : {}),
     ...(options.faststart !== undefined ? { faststart: options.faststart } : {}),
     ...(options.extraArgs !== undefined ? { extraArgs: options.extraArgs } : {}),
+    ...(options.audioHandling !== undefined ? { audioHandling: options.audioHandling } : {}),
+    ...(options.subtitleHandling !== undefined ? { subtitleHandling: options.subtitleHandling } : {}),
+    ...(options.stripMetadata !== undefined ? { stripMetadata: options.stripMetadata } : {}),
+    ...(options.trimStart !== undefined ? { trimStart: options.trimStart } : {}),
+    ...(options.trimEnd !== undefined ? { trimEnd: options.trimEnd } : {}),
   });
 
   const unlisten = await listen<{ requestId: string; progress: number }>("encode-progress", (event) => {
@@ -314,6 +324,11 @@ export interface NativeEncodeOptions {
   stripAudio?: boolean;
   faststart?: boolean;
   extraArgs?: string[];
+  audioHandling?: import("./recipe").AudioHandling;
+  subtitleHandling?: import("./recipe").SubtitleHandling;
+  stripMetadata?: boolean;
+  trimStart?: number;
+  trimEnd?: number;
   durationSeconds: number;
   signal?: AbortSignal;
   onProgress?: (progress: number) => void;
@@ -360,6 +375,11 @@ export async function nativeEncode(options: NativeEncodeOptions): Promise<Native
     ...(options.stripAudio !== undefined ? { stripAudio: options.stripAudio } : {}),
     ...(options.faststart !== undefined ? { faststart: options.faststart } : {}),
     ...(options.extraArgs !== undefined ? { extraArgs: options.extraArgs } : {}),
+    ...(options.audioHandling !== undefined ? { audioHandling: options.audioHandling } : {}),
+    ...(options.subtitleHandling !== undefined ? { subtitleHandling: options.subtitleHandling } : {}),
+    ...(options.stripMetadata !== undefined ? { stripMetadata: options.stripMetadata } : {}),
+    ...(options.trimStart !== undefined ? { trimStart: options.trimStart } : {}),
+    ...(options.trimEnd !== undefined ? { trimEnd: options.trimEnd } : {}),
   });
 
   const unlisten = await listen<{ requestId: string; progress: number }>("encode-progress", (event) => {

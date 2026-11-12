@@ -137,7 +137,7 @@ Display/hero tokens added for the revamp: `--text-display` (3.25rem, -0.035em) a
 - **Comfortable density**: 44px minimum interactive targets; generous padding; scroll only the queue/table regions, never the page chrome.
 - **Header**: brand left (mark + wordmark), status pill + Settings button (gear icon) right; tabs as a segmented row below.
 - **Tasks tray**: fixed bottom-center pill `z-40`, `backdrop-blur`; state visible only while ≥1 job is running. Collapsed: spinner + "N task(s) running" + chevron toggle; expanded: scrollable popover with icon + label + stage/% + elapsed + cancel. Click row → jump to the owning workbench.
-- **Settings drawer** (right side, `z-50`, 420px max): sidebar with Engine | Cache | Updates sections. Engine = diagnostics + Local AI card; Cache = live `$APPDATA/cache` usage, per-part breakdown, "Clear cache" with `window.confirm`; Updates = current version + flavor, check button, release notes + per-asset download (opens to `~/Downloads`).
+- **Settings drawer** (right side, `z-50`, 420px max): sidebar with Engine | Cache | Updates | Backup sections. Engine = diagnostics + Local AI card; Cache = live `$APPDATA/cache` usage, per-part breakdown, "Clear cache" with `window.confirm`; Updates = current version + flavor, check button, release notes + per-asset download (opens to `~/Downloads`); Backup = export/import the whole app config as one versioned JSON (`pixel-press-config.json`, `schemaVersion: 1` — presets + AI/engine prefs + advanced-mode flag; no model weights/logs/paths; import collision-renames presets, previews the diff before applying).
 - **Marquee**: overflow-aware filename wrapper — duplicates content and cycles `translateX` only when it overflows; pauses on `:hover`/`:focus-within`; `prefers-reduced-motion` falls back to ellipsis; siblings never shrink (`min-w-0`).
 - Settings/utility screens follow the same card layout: one card per concern, label above control.
 
@@ -166,7 +166,10 @@ Flat + tonal layering, not shadows:
 - **button-ghost** — borderless text/icon button; danger variant for Clear/Remove.
 - **card** — `card` surface, 1px `border`, `lg` radius, 16px padding; the universal container.
 - **dropzone** — dashed `border`, `xl` radius, centered content; `dragging` state tints `primary/10`; `busy` swaps icon for spinner and shows "Reading file…"; errors render inline with destructive styling.
-- **chip** — `secondary` background, `muted-foreground` text, `full` radius; preset labels and capability badges.
+- **chip** — `secondary` background, `muted-foreground` text, `full` radius; preset labels and capability badges. User presets get an emerald ★ variant (vs violet built-in presets).
+- **plan-review** — read-only parameter table directly under the intent bar (default); Advanced user mode toggle in its header unlocks constrained editing (dropdowns/slider/toggles — every value allowlisted to ffmpeg args). Rows carry provenance badges: ● you / ● AI / ● rule / ● preset / ● default. CRF row explains semantics inline. Footer saves the current recipe as a named preset.
+- **model-required-modal** — blocking dialog when an intent exceeds rule-engine coverage and no local model is ready: "Download model & encode" (~270 MB, auto-starts encode when ready) · "Skip download — best-effort with rule engine" · cancel.
+
 - **progressbar** — 8px track (`secondary`), `primary` fill with 300ms width transitions; per-variant and overall variants; percent in mono.
 - **input** — `background` fill (not card), `border` stroke, `md` radius; focus ring `ring` at 2px; mono for CRF/paths inputs.
 - **StatusPill / Engine badges / local-AI status card** — `info`/`success`/`warning` tints at low alpha backgrounds with solid borders; never text-in-color alone.
