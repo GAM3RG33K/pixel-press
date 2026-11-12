@@ -159,8 +159,11 @@ export async function resolveRecipe(
   intent: string | undefined,
   aiMode: AIMode,
 ): Promise<ResolvedRecipeResult> {
+  const hasIntent = Boolean(intent && intent.trim());
   const constraints = parseIntentConstraints(intent ?? '', metadata);
-  const planResult = await resolvePlan(metadata, intent, aiMode);
+  // No intent → rule engine reads metadata deterministically; do not burn an
+  // LLM inference on a blank bar (the mount path resolves with empty intent).
+  const planResult = await resolvePlan(metadata, hasIntent ? intent : undefined, hasIntent ? aiMode : 'rule-engine');
   const base = recipeFromPlan(planResult.plan, planResult.used);
   const constrained = applyIntentConstraints(base, intent ?? '', metadata);
   const modelHandled = planResult.used === 'ai';

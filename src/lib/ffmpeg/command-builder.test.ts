@@ -217,14 +217,38 @@ describe("container & subtitle/audio handling", () => {
     expect(mp4).toContain("mov_text");
   });
 
-  it("maps only the requested subtitle languages", () => {
+  it("maps only the requested subtitle stream indices (never language-specifier syntax)", () => {
     const args = buildEncodeArgs({
       ...base,
       outputPath: "/out.mkv",
       subtitleHandling: { mode: "only", languages: ["eng"] },
+      subtitleStreamIndices: [2],
     });
-    expect(args).toContain("-map");
-    expect(args).toContain("0:s:m:language:eng?");
+    expect(args).toContain("0:2");
+    expect(args).not.toContain("0:s:m:language:eng?");
+    // stripped audio ⇒ no audio mapping, even with explicit subtitle map
+    const withStrip = buildEncodeArgs({
+      ...base,
+      outputPath: "/out.mkv",
+      audioHandling: "strip",
+      subtitleHandling: { mode: "only", languages: ["eng"] },
+      subtitleStreamIndices: [2],
+    });
+    expect(withStrip).not.toContain("0:a?");
+    expect(withStrip).toContain("-an");
+    expect(withStrip).toContain("0:v");
+  });
+
+  it("explicit subtitle map does not reference audio when stripped", () => {
+    const args = buildEncodeArgs({
+      ...base,
+      outputPath: "/out.mp4",
+      audioHandling: "strip",
+      subtitleHandling: { mode: "only", languages: ["eng"] },
+      subtitleStreamIndices: [2, 3],
+    });
+    expect(args).not.toContain("0:a?");
+    expect(args).toContain("mov_text");
   });
 
   it("strips metadata with -map_metadata -1", () => {

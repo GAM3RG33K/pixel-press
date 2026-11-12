@@ -272,7 +272,7 @@ export function OptimizeView({
       resolveRecipe(firstProbed, optimizeIntent.trim() || undefined, aiMode).then((result) => {
         if (!cancelled) setRecipeResult(result);
       });
-    }, 300);
+    }, 1200);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
@@ -459,6 +459,15 @@ export function OptimizeView({
         codec = recipe.targetCodec === "vp9" ? "vp9" : recipe.targetCodec === "h265" ? "h265" : "h264";
         crf = recipe.crf;
       }
+      const subIndices =
+        recipe.subtitleHandling.mode === "only" && metadata
+          ? (metadata.subtitleStreams ?? [])
+              .filter((s) =>
+                recipe.subtitleHandling.mode === "only" &&
+                recipe.subtitleHandling.languages.includes((s.lang ?? "").toLowerCase()),
+              )
+              .map((s) => s.index)
+          : undefined;
       const effectiveDuration =
         recipe.trimEnd !== undefined
           ? Math.max(0.1, recipe.trimEnd - (recipe.trimStart ?? 0))
@@ -509,6 +518,7 @@ export function OptimizeView({
           stripAudio: recipe.audioHandling === "strip",
           audioHandling: recipe.audioHandling,
           subtitleHandling: recipe.subtitleHandling,
+          ...(subIndices !== undefined ? { subtitleStreamIndices: subIndices } : {}),
           stripMetadata: recipe.stripMetadata,
           ...(recipe.trimStart !== undefined ? { trimStart: recipe.trimStart } : {}),
           ...(recipe.trimEnd !== undefined ? { trimEnd: recipe.trimEnd } : {}),
@@ -546,6 +556,7 @@ export function OptimizeView({
         stripAudio: recipe.audioHandling === "strip",
         audioHandling: recipe.audioHandling,
         subtitleHandling: recipe.subtitleHandling,
+        ...(subIndices !== undefined ? { subtitleStreamIndices: subIndices } : {}),
         stripMetadata: recipe.stripMetadata,
         ...(recipe.trimStart !== undefined ? { trimStart: recipe.trimStart } : {}),
         ...(recipe.trimEnd !== undefined ? { trimEnd: recipe.trimEnd } : {}),

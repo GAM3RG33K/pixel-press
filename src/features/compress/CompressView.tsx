@@ -133,7 +133,7 @@ export function CompressView({
       resolveRecipe(metadata, intentText.trim() || undefined, aiMode).then((result) => {
         if (!cancelled) setRecipeResult(result);
       });
-    }, 300);
+    }, 1200);
 
     return () => {
       cancelled = true;
@@ -322,6 +322,30 @@ export function CompressView({
     abortRef.current = new AbortController();
     const base = file.name.replace(/\.[^./]+$/, "") || "video";
 
+    const subIndices =
+      recipe.subtitleHandling.mode === "only"
+        ? (metadata.subtitleStreams ?? [])
+            .filter((s) =>
+              recipe.subtitleHandling.mode === "only" &&
+              recipe.subtitleHandling.languages.includes((s.lang ?? "").toLowerCase()),
+            )
+            .map((s) => s.index)
+        : undefined;
+    if (
+      recipe.subtitleHandling.mode === "only" &&
+      subIndices &&
+      subIndices.length === 0 &&
+      (metadata.subtitleStreams ?? []).length > 0
+    ) {
+      diag.warn('compress', 'keep-only subtitle request matched no streams — output will have no subtitles', {
+        wanted: recipe.subtitleHandling.languages,
+        available: (metadata.subtitleStreams ?? []).map((s) => s.lang ?? "und"),
+      });
+      setFallbackNotice(
+        `Requested subtitle language(s) ${recipe.subtitleHandling.languages.join(", ")} not found in source — output will contain no subtitles.`,
+      );
+    }
+
     const variantsToEncode = buildWorkbenchVariants(resolved.plan, metadata.fileSize, metadata, "optimized", intentText, recipe).variants;
       let taskId: string | null = null;
     const useNative = isNativeEngine();
@@ -369,6 +393,7 @@ export function CompressView({
             stripAudio: recipe.audioHandling === "strip",
             audioHandling: recipe.audioHandling,
             subtitleHandling: recipe.subtitleHandling,
+            ...(subIndices !== undefined ? { subtitleStreamIndices: subIndices } : {}),
             stripMetadata: recipe.stripMetadata,
             ...(recipe.trimStart !== undefined ? { trimStart: recipe.trimStart } : {}),
             ...(recipe.trimEnd !== undefined ? { trimEnd: recipe.trimEnd } : {}),
@@ -408,6 +433,7 @@ export function CompressView({
             stripAudio: recipe.audioHandling === "strip",
             audioHandling: recipe.audioHandling,
             subtitleHandling: recipe.subtitleHandling,
+            ...(subIndices !== undefined ? { subtitleStreamIndices: subIndices } : {}),
             stripMetadata: recipe.stripMetadata,
             ...(recipe.trimStart !== undefined ? { trimStart: recipe.trimStart } : {}),
             ...(recipe.trimEnd !== undefined ? { trimEnd: recipe.trimEnd } : {}),

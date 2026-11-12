@@ -205,6 +205,7 @@ export interface NativeEncodeFileOptions {
   extraArgs?: string[];
   audioHandling?: import("./recipe").AudioHandling;
   subtitleHandling?: import("./recipe").SubtitleHandling;
+  subtitleStreamIndices?: number[];
   stripMetadata?: boolean;
   trimStart?: number;
   trimEnd?: number;
@@ -245,6 +246,7 @@ export async function nativeEncodeFile(options: NativeEncodeFileOptions): Promis
     ...(options.extraArgs !== undefined ? { extraArgs: options.extraArgs } : {}),
     ...(options.audioHandling !== undefined ? { audioHandling: options.audioHandling } : {}),
     ...(options.subtitleHandling !== undefined ? { subtitleHandling: options.subtitleHandling } : {}),
+    ...(options.subtitleStreamIndices !== undefined ? { subtitleStreamIndices: options.subtitleStreamIndices } : {}),
     ...(options.stripMetadata !== undefined ? { stripMetadata: options.stripMetadata } : {}),
     ...(options.trimStart !== undefined ? { trimStart: options.trimStart } : {}),
     ...(options.trimEnd !== undefined ? { trimEnd: options.trimEnd } : {}),
@@ -326,6 +328,7 @@ export interface NativeEncodeOptions {
   extraArgs?: string[];
   audioHandling?: import("./recipe").AudioHandling;
   subtitleHandling?: import("./recipe").SubtitleHandling;
+  subtitleStreamIndices?: number[];
   stripMetadata?: boolean;
   trimStart?: number;
   trimEnd?: number;
@@ -377,6 +380,7 @@ export async function nativeEncode(options: NativeEncodeOptions): Promise<Native
     ...(options.extraArgs !== undefined ? { extraArgs: options.extraArgs } : {}),
     ...(options.audioHandling !== undefined ? { audioHandling: options.audioHandling } : {}),
     ...(options.subtitleHandling !== undefined ? { subtitleHandling: options.subtitleHandling } : {}),
+    ...(options.subtitleStreamIndices !== undefined ? { subtitleStreamIndices: options.subtitleStreamIndices } : {}),
     ...(options.stripMetadata !== undefined ? { stripMetadata: options.stripMetadata } : {}),
     ...(options.trimStart !== undefined ? { trimStart: options.trimStart } : {}),
     ...(options.trimEnd !== undefined ? { trimEnd: options.trimEnd } : {}),

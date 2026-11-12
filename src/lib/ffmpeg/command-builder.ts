@@ -23,6 +23,8 @@ export interface EncodeArgsInput {
   /** Trim window in seconds (input seeking, before -i). */
   trimStart?: number;
   trimEnd?: number;
+  /** Explicit subtitle stream indices to keep (from ffprobe). When set with mode "only", these are mapped — no language-specifier syntax, works on every ffmpeg build. */
+  subtitleStreamIndices?: number[];
 }
 
 export function codecArgs(
@@ -96,21 +98,28 @@ export function audioArgs(
 function subtitleArgs(
   container: ContainerFormat,
   handling: SubtitleHandling,
+  indices?: number[],
 ): string[] {
+  const textSubs = container === "mp4" || container === "mov";
+  const subCodec = textSubs ? "mov_text" : "copy";
   if (handling.mode === "strip") return ["-sn"];
   if (handling.mode === "copy") {
-    return container === "mp4" || container === "mov"
-      ? ["-c:s", "mov_text"]
-      : ["-c:s", "copy"];
+    return ["-c:s", subCodec];
   }
-  // only: keep subtitle streams whose language matches one of the requested tags
-  const langs = handling.languages.map((l) => l.toLowerCase());
-  const subCodec = container === "mp4" || container === "mov" ? "mov_text" : "copy";
+  // "only": keep the explicitly listed streams. Falling back to keeping all
+  // subs is worse than failing loudly — but mapping everything keeps the job
+  // working when indices are unavailable (never happens in the app).
+  const mapped = indices ?? null;
   const args: string[] = [];
-  for (const lang of langs) {
-    args.push("-map", `0:s:m:language:${lang}?`);
+  if (mapped === null) {
+    return ["-map", "0:s?", "-c:s", subCodec];
   }
-  args.push("-c:s", subCodec);
+  for (const index of mapped) {
+    args.push("-map", `0:${index}`);
+  }
+  if (mapped.length > 0) {
+    args.push("-c:s", subCodec);
+  }
   return args;
 }
 
@@ -191,7 +200,7 @@ export function buildEncodeArgs(input: EncodeArgsInput): string[] {
 
   args.push(...codecArgs(input.codec, input.crf, input.preset));
   args.push(...audioArgs(container, Boolean(input.stripAudio), input.audioHandling));
-  args.push(...subtitleArgs(container, subHandling));
+  args.push(...subtitleArgs(container, subHandling, input.subtitleStreamIndices));
 
   if (input.stripMetadata) {
     args.push("-map_metadata", "-1");

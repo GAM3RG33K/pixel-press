@@ -46,6 +46,7 @@ export interface EncodeOptions {
   extraArgs?: string[];
   audioHandling?: import("./recipe").AudioHandling;
   subtitleHandling?: import("./recipe").SubtitleHandling;
+  subtitleStreamIndices?: number[];
   stripMetadata?: boolean;
   trimStart?: number;
   trimEnd?: number;
@@ -523,6 +524,9 @@ export class FfmpegService {
             : {}),
           ...(options.subtitleHandling !== undefined
             ? { subtitleHandling: options.subtitleHandling }
+            : {}),
+          ...(options.subtitleStreamIndices !== undefined
+            ? { subtitleStreamIndices: options.subtitleStreamIndices }
             : {}),
           ...(options.stripMetadata !== undefined
             ? { stripMetadata: options.stripMetadata }
