@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BrainCircuit, Download, Loader2, Trash2, Zap } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 
@@ -14,6 +14,7 @@ import { isTauri, listLlmCandidates, downloadLlm, checkLlm, planWithNativeLlm, t
 import { downloadModel, isModelCached, deleteModelFromCache } from "@/lib/ai/webllm";
 import { cn } from "@/lib/utils";
 import { registerTask, completeTask, failTask, updateTask } from "@/lib/tasks/registry";
+import { etaFromProgress, formatRemaining } from "@/lib/format";
 
 const PREF_OPTIONS: { id: AIMode; title: string; body: string; badge?: string }[] = [
   {
@@ -42,6 +43,8 @@ export function AiSettingsCard() {
   const [status, setStatus] = useState<string | null>(null);
   const [selected, setSelected] = useState<AIMode>('rule-engine');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const downloadStartedAtRef = useRef<number | null>(null);
+  const downloadTaskIdRef = useRef<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [llmReady, setLlmReady] = useState<boolean | null>(null);
   const [llmSpec, setLlmSpec] = useState<LlmCandidate | null>(null);
@@ -60,6 +63,10 @@ export function AiSettingsCard() {
       listen<[string, number]>("download-progress", (event) => {
         if (event.payload[0] === "llm:smollm2-360m") {
           setDownloadProgress(event.payload[1]);
+          downloadStartedAtRef.current ??= Date.now();
+          const total = llmSpec?.size_bytes ?? 270590880;
+          const activeTask = downloadTaskIdRef.current;
+          if (activeTask) updateTask(activeTask, { progress: (event.payload[1] / total) * 100, stage: "Downloading model…" });
         }
       }).then((fn) => { unlisten = fn; }).catch(() => undefined);
     }
@@ -95,6 +102,7 @@ export function AiSettingsCard() {
       setIsDownloading(true);
       setStatus('Downloading model…');
       setDownloadProgress(0);
+      downloadStartedAtRef.current = Date.now();
       const taskId = registerTask({
         workbench: "ai",
         label: "Local AI · SmolLM2-360M",
@@ -102,6 +110,7 @@ export function AiSettingsCard() {
         progress: null,
         cancel: null,
       });
+      downloadTaskIdRef.current = taskId;
       try {
         await downloadLlm(llmSpec.id, { url: llmSpec.url, sha256: llmSpec.sha256 });
         await refresh();
@@ -328,11 +337,24 @@ export function AiSettingsCard() {
       ) : null}
 
       {isDownloading && downloadProgress !== null ? (
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary">
-          <div
-            className="h-full rounded-full bg-primary transition-[width] duration-200"
-            style={{ width: `${Math.min(100, Math.round((downloadProgress / totalBytes) * 100))}%` }}
-          />
+        <div className="mt-2">
+          <div className="flex items-center justify-between text-[10px] tabular-nums text-muted-foreground">
+            <span>{Math.round((downloadProgress / totalBytes) * 100)}%</span>
+            <span>
+              {formatRemaining(
+                etaFromProgress(
+                  downloadStartedAtRef.current ?? undefined,
+                  (downloadProgress / totalBytes) * 100,
+                ),
+              )}
+            </span>
+          </div>
+          <div className="mt-1 h-2 overflow-hidden rounded-full bg-secondary" role="progressbar" aria-label="Model download progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((downloadProgress / totalBytes) * 100)}>
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-200"
+              style={{ width: `${Math.min(100, Math.round((downloadProgress / totalBytes) * 100))}%` }}
+            />
+          </div>
         </div>
       ) : null}
 

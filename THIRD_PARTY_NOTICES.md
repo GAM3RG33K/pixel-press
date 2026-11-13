@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-`pixel-press` source code is licensed under the [MIT License](LICENSE). The Tauri desktop app downloads the following third-party components on first launch. They are not part of the MIT-licensed source tree and are fetched from the project's GitHub Releases.
+`pixel-press` source code is licensed under the [MIT License](LICENSE). The pixel-press app downloads the following third-party components on first launch. They are not part of the MIT-licensed source tree and are fetched from the project's GitHub Releases.
 
 ## Native FFmpeg + ffprobe (downloaded on first launch)
 
@@ -23,7 +23,7 @@ Users who redistribute modified builds of the app must comply with the GPL terms
 
 See `docs/harness/model-registry.md` for the model selection process.
 
-## Rust crates (Tauri + plugins)
+## Rust crates (app shell and plugins)
 
 - `tauri`, `tauri-plugin-fs`, `tauri-plugin-shell`, `tauri-plugin-dialog` — MIT / Apache-2.0
 - `serde`, `serde_json`, `anyhow` — MIT / Apache-2.0

@@ -36,7 +36,7 @@ export function PressHome({
           <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-primary">
             The Press
           </p>
-          <h1 className="mt-1 text-4xl font-semibold tracking-tight sm:text-5xl">
+          <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight sm:text-5xl">
             pixel-press
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">

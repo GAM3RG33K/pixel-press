@@ -25,6 +25,8 @@ import type { EncodeRecipe, RecipeSources } from "@/lib/ffmpeg/recipe";
 import { diag, captureError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
 import { Marquee } from "@/components/marquee";
+import { etaFromProgress, formatRemaining } from "@/lib/format";
+import { logBeforeAfter } from "@/lib/compare-log";
 import { registerTask, updateTask, completeTask, failTask, cancelTask } from "@/lib/tasks/registry";
 import { estimateSizeBytes } from "@/lib/workflow";
 import { parseIntentConstraints, resolveOutputContainer, extensionFor } from "@/lib/ffmpeg/recipe";
@@ -50,6 +52,8 @@ interface OptimizeCandidate {
   status: "pending" | "encoding" | "done" | "failed" | "skipped";
   /** 0–100 while encoding (real-time from encoder output). */
   progress?: number | undefined;
+  /** When the current encode started (for remaining-time estimates). */
+  encodeStartedAt?: number | undefined;
   outputFileName?: string | undefined;
   outputBlob?: Blob | undefined;
   /** Tauri flow: absolute path of the produced file. */
@@ -83,6 +87,7 @@ export function OptimizeView({
   const [override, setOverride] = useState<{ recipe: EncodeRecipe; sources: RecipeSources } | null>(null);
   const [showModelModal, setShowModelModal] = useState(false);
   const bestEffortRef = useRef(false);
+  const batchStartedAtRef = useRef<number | null>(null);
   const pendingModelActionRef = useRef<(() => void) | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   /** Set when the user cancels a bulk run; checked between queue iterations. */
@@ -399,7 +404,7 @@ export function OptimizeView({
     try {
       setCandidates((prev) =>
         prev.map((c, i) =>
-          i === index ? { ...c, status: "encoding" as const, progress: 0 } : c,
+          i === index ? { ...c, status: "encoding" as const, progress: 0, encodeStartedAt: Date.now() } : c,
         ),
       );
 
@@ -509,7 +514,7 @@ export function OptimizeView({
           outAbsPath = await getFinalPath(`${dir}${sep}${planOutputName}`);
           displayOut = outAbsPath.split(/[/\\]/).pop() ?? planOutputName;
         }
-        await nativeEncodeFile({
+        const done = await nativeEncodeFile({
           inputPath: candidate.absolutePath!,
           outputPath: outAbsPath,
           codec,
@@ -527,6 +532,21 @@ export function OptimizeView({
           onProgress: setItemProgress,
         });
         const encodedBytes = await (await import("@tauri-apps/plugin-fs")).readFile(outAbsPath);
+        logBeforeAfter({
+          label: `Optimize · ${candidate.name}`,
+          inputFileName: candidate.name,
+          inputBytes: candidate.size,
+          outputBytes: encodedBytes.byteLength,
+          codec,
+          crf,
+          container: ext,
+          encodeMs: done.durationMs,
+          metadata: metadata ?? candidate.metadata ?? null,
+          outputScale: recipe.targetScale,
+          audioHandling: recipe.audioHandling,
+          subtitleHandling: recipe.subtitleHandling,
+          stripMetadata: recipe.stripMetadata,
+        });
         if (batchTaskRef.current) {
           batchDoneRef.current += 1;
           updateTask(batchTaskRef.current, {
@@ -572,6 +592,21 @@ export function OptimizeView({
           });
 
       const MIME: Record<string, string> = { mp4: "video/mp4", mov: "video/quicktime", mkv: "video/x-matroska", webm: "video/webm", avi: "video/x-msvideo" };
+      logBeforeAfter({
+        label: `Optimize · ${candidate.name}`,
+        inputFileName: candidate.name,
+        inputBytes: candidate.size,
+        outputBytes: encoded.data.byteLength,
+        codec,
+        crf,
+        container: ext,
+        encodeMs: encoded.durationMs,
+        metadata: metadata ?? candidate.metadata ?? null,
+        outputScale: recipe.targetScale,
+        audioHandling: recipe.audioHandling,
+        subtitleHandling: recipe.subtitleHandling,
+        stripMetadata: recipe.stripMetadata,
+      });
       const blob = new Blob([encoded.data as Uint8Array<ArrayBuffer>], { type: MIME[ext] ?? "video/mp4" });
       if (batchTaskRef.current) {
         batchDoneRef.current += 1;
@@ -634,6 +669,7 @@ export function OptimizeView({
       return;
     }
     bulkCancelledRef.current = false;
+    batchStartedAtRef.current = Date.now();
     setWorking(true);
     setError(null);
     const pendingCountLocal = candidates.filter(
@@ -913,6 +949,9 @@ export function OptimizeView({
                 <span className="text-sm font-medium">Overall progress</span>
                 <span className="text-xs tabular-nums text-muted-foreground">
                   {finishedCount}/{candidates.length} files · {Math.round(overallProgress)}%
+                  {working && batchStartedAtRef.current
+                    ? ` · ${formatRemaining(etaFromProgress(batchStartedAtRef.current, overallProgress))}`
+                    : ""}
                 </span>
               </div>
               <div
@@ -967,6 +1006,8 @@ export function OptimizeView({
                         </span>
                         <span className="mt-0.5 block text-[10px] tabular-nums text-muted-foreground">
                           {Math.round(candidate.progress ?? 0)}%
+                          {" · "}
+                          {formatRemaining(etaFromProgress(candidate.encodeStartedAt, candidate.progress))}
                         </span>
                       </span>
                     ) : null}

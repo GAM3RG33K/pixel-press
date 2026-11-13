@@ -23,6 +23,7 @@ import {
 } from "@/lib/tasks/registry";
 import { cn } from "@/lib/utils";
 import { Marquee } from "@/components/marquee";
+import { etaFromProgress, formatRemaining } from "@/lib/format";
 
 const WORKBENCH_ICON: Record<TaskWorkbench, typeof Zap> = {
   compress: Zap,
@@ -42,10 +43,9 @@ const WORKBENCH_TAB: Record<TaskWorkbench, "compress" | "compare" | "optimize" |
   ai: null,
 };
 
-function elapsed(startedAt: number): string {
-  const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-  if (sec < 60) return `${sec}s`;
-  return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+function remainingLabel(task: Task): string {
+  const eta = etaFromProgress(task.startedAt, task.progress ?? undefined);
+  return formatRemaining(eta);
 }
 
 function Row({
@@ -93,7 +93,7 @@ function Row({
                 ? task.error ?? "Failed"
                 : task.stage ?? "Working…"}
           {task.progress != null && !done && !failed ? ` · ${Math.round(task.progress)}%` : null}
-          {task.status === "running" ? ` · ${elapsed(task.startedAt)}` : null}
+          {task.status === "running" ? ` · ${remainingLabel(task)}` : null}
         </span>
       </button>
       {task.cancel ? (

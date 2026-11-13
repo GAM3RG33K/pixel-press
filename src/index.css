@@ -59,9 +59,10 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-info: var(--info);
+  /* Native-first UI chrome; Schibsted Grotesk stays as the brand/display face via --font-display. */
   --font-sans:
-    "Schibsted Grotesk Variable", "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system,
-    "Segoe UI", sans-serif;
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui,
+    "Segoe UI", "Helvetica Neue", "Schibsted Grotesk Variable", sans-serif;
   --font-mono:
     "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SFMono-Regular", "Menlo",
     monospace;
@@ -152,3 +153,49 @@
 .marquee-active:focus-within .marquee-inner { animation-play-state: paused; }
 
 @media (prefers-reduced-motion: reduce) { .marquee-inner { animation: none; } }
+
+/* ── Native scrollbars (macOS-overlay feel) ────────────────────────────── */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--foreground) 22%, transparent);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--foreground) 38%, transparent);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── Native-feel chrome ─────────────────────────────────────────────────── */
+/* Interactive chrome behaves like native controls — no text-selection flash on click. */
+button,
+summary,
+label,
+[role="button"],
+[role="switch"],
+[role="tab"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Inputs, code/mono readouts and anchors stay selectable. */
+input,
+textarea,
+code,
+pre,
+a,
+[data-selectable] {
+  -webkit-user-select: auto;
+  user-select: auto;
+}

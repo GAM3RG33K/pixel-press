@@ -2,7 +2,7 @@
 
 A **local-first, local-only** video compressor available as a native desktop app. FFmpeg and the local LLM are installed on first launch via a tested download manager; nothing is uploaded anywhere — every byte is processed on your device.
 
-> Status: Tauri v2 desktop app on `main`; CI release pipeline live (4 shipping targets, tag-push triggered). Recent additions: tasks-in-progress tray, huge-file smart probe, consolidated cache + Settings drawer (Engine | Cache | Updates | Backup), built-in update check, intent-first plan review with Advanced user mode, named presets, and config Backup & Restore. PWA milestone preserved at `v0.0.0-pwa-milestone` on `main`.
+> Status: pixel-press on `main` — a native desktop app for macOS and Linux; CI release pipeline live (4 shipping targets, tag-push triggered). Recent additions: tasks-in-progress tray, huge-file smart probe, consolidated cache + Settings drawer (Engine | Cache | Updates | Backup), built-in update check, intent-first plan review with Advanced user mode, named presets, and config Backup & Restore. PWA milestone preserved at `v0.0.0-pwa-milestone` on `main`.
 
 ## Why this overhaul now
 
@@ -76,7 +76,7 @@ Long filenames animate as a marquee inside their container — sibling text (but
 
 ## Stack
 
-Tauri v2 (Rust) · React · Tailwind + shadcn/ui · native llama.cpp via `llama-cpp-4` (SmolLM2-360M, GGUF) · `bun` (web build) · plain `bash` release wizard (`bun run release`)
+Rust + React · Tailwind + shadcn/ui · desktop shell (Tauri v2 runtime) · native llama.cpp via `llama-cpp-4` (SmolLM2-360M, GGUF) · `bun` (web build) · plain `bash` release wizard (`bun run release`)
 
 ## Install
 
@@ -88,7 +88,7 @@ Download the release for your platform from GitHub Releases (`v*.*.*`). The inst
 src/                  Frontend (React + TypeScript)
   lib/tasks/          Task registry (tray) — pub/sub, useSyncExternalStore
   components/         marquee, tasks-tray, settings-drawer, DropZone
-src-tauri/            Rust backend (Tauri)
+src-tauri/            Rust backend
   src/                encode.rs · setup.rs (first-launch downloads, cache) · llm.rs
 docs/                 Source docs + harness (gitignored — see D-014)
 ```

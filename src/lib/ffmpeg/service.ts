@@ -15,6 +15,7 @@ import { parseEncoderListing } from "./encoder-inventory";
 import { parseFfprobeJson } from "./ffprobe-parser";
 import { JobQueue } from "./job-queue";
 import { diag, captureError } from "@/lib/diagnostics";
+import { clipText } from "@/lib/format";
 import { percentFromTime, parseProgressLine } from "./progress";
 
 export interface EngineLoadStatus {
@@ -271,6 +272,10 @@ export class FfmpegService {
         // `ffprobe` in the WASM core reports a non-zero code even on success
         // (observed with @ffmpeg/core 0.12.10), so the output file is the
         // source of truth; a missing/invalid file still throws.
+        diag.info('probe', 'ffprobe command (wasm)', {
+          command: `ffprobe ${[...buildProbeArgs(inputPath), '-o', outputPath].join(' ')}`,
+          inputPath,
+        });
         diag.debug('probe', 'ffprobe exec start', { inputPath, outputPath });
         const code = await this.ffmpeg.ffprobe(
           [...buildProbeArgs(inputPath), "-o", outputPath],
@@ -287,6 +292,7 @@ export class FfmpegService {
           );
         }
         const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw);
+        diag.info('probe', 'ffprobe output', { raw: clipText(text) });
         const metadata = parseFfprobeJson(text, options.fileName, fileSize);
         diag.info('probe', 'ffprobe complete', {
           fileSize,
@@ -439,9 +445,16 @@ export class FfmpegService {
             outputBytes: data?.byteLength,
             avgMs: Math.round(performance.now() - startedAt),
             logLineCount: log.length,
-            logTail: log.slice(-20),
           });
-          diag.debug('run', 'full ffmpeg args used', { args });
+          if (log.length > 0) {
+            diag.info('encode', 'ffmpeg console output (wasm, full tail)', {
+              exitCode,
+              outputPath,
+              lines: log.length,
+              console: clipText(log.slice(-160).join('\n')),
+            });
+          }
+          diag.debug('run', 'full ffmpeg args used', { args: clipText(args.join(' ')) });
 
           return {
             ...(data !== undefined ? { data } : {}),
@@ -498,7 +511,7 @@ export class FfmpegService {
         if (!inputPath || !outputPath) {
           throw new Error("encode requires one input and one output path");
         }
-        return buildEncodeArgs({
+        const args = buildEncodeArgs({
           inputPath,
           outputPath,
           codec: options.codec,
@@ -538,6 +551,13 @@ export class FfmpegService {
             ? { trimEnd: options.trimEnd }
             : {}),
         });
+        diag.info('encode', 'ffmpeg command (wasm)', {
+          args: clipText(args.join(' ')),
+          outputFileName: options.outputFileName,
+          codec: options.codec,
+          crf: options.crf,
+        });
+        return args;
       },
     });
 
@@ -551,6 +571,13 @@ export class FfmpegService {
       outputBytes: result.data.byteLength,
       durationMs: result.durationMs,
     });
+    if (result.log) {
+      diag.info('encode', 'ffmpeg console output (wasm)', {
+        outputFileName: options.outputFileName,
+        lines: result.log.length,
+        console: clipText(result.log.join('\n')),
+      });
+    }
     return {
       data: result.data,
       outputFileName: options.outputFileName,

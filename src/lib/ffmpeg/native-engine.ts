@@ -15,6 +15,7 @@ import { buildEncodeArgs } from "./command-builder";
 import { parseEncoderListing } from "./encoder-inventory";
 import { parseFfprobeJson } from "./ffprobe-parser";
 import { diag } from "@/lib/diagnostics";
+import { clipText } from "@/lib/format";
 import type {
   EncoderCapabilities,
   TargetCodec,
@@ -109,7 +110,10 @@ export async function nativeProbePath(
   fileName: string,
   fileSize: number,
 ): Promise<{ metadata: VideoMetadata; raw: string }> {
+  const command = `ffprobe -hide_banner -v error -show_format -show_streams -of json ${JSON.stringify(path)}`;
+  diag.info("probe", "ffprobe command (path)", { command, fileName, fileSize });
   const raw = await tauriApi.ffprobeJson(path);
+  diag.info("probe", "ffprobe output", { raw: clipText(raw) });
   const metadata = parseFfprobeJson(raw, fileName, fileSize);
   return { metadata, raw };
 }
@@ -122,7 +126,10 @@ export async function tryProbeSlice(
 ): Promise<{ metadata: VideoMetadata; raw: string } | null> {
   try {
     const bytes = new Uint8Array(await slice.arrayBuffer());
+    const command = `ffprobe -hide_banner -v error -show_format -show_streams -of json <slice:${bytes.byteLength} bytes of ${fileSize}>`;
+    diag.info("probe", "ffprobe command (slice)", { command, fileName, fileSize });
     const raw = await tauriApi.ffprobeBytes(bytes, fileName);
+    diag.info("probe", "ffprobe output", { raw: clipText(raw) });
     return { metadata: parseFfprobeJson(raw, fileName, fileSize), raw };
   } catch {
     return null;
@@ -144,7 +151,10 @@ export async function nativeProbeStaged(
   fileName: string,
   fileSize: number,
 ): Promise<{ metadata: VideoMetadata; raw: string }> {
+  const command = `ffprobe -hide_banner -v error -show_format -show_streams -of json ${JSON.stringify(staged.tmpPath)}`;
+  diag.info("probe", "ffprobe command (staged)", { command, fileName, fileSize });
   const raw = await tauriApi.ffprobeJson(staged.tmpPath);
+  diag.info("probe", "ffprobe output", { raw: clipText(raw) });
   const metadata = parseFfprobeJson(raw, fileName, fileSize);
   return { metadata, raw };
 }
@@ -169,7 +179,13 @@ export async function nativeProbe(
 ): Promise<{ metadata: VideoMetadata; raw: string }> {
   const fileSize = input instanceof Uint8Array ? input.byteLength : input.size;
   const bytes = await toBytes(input);
+  diag.info("probe", "ffprobe command (bytes)", {
+    command: `ffprobe -hide_banner -v error -show_format -show_streams -of json <bytes:${bytes.byteLength}B> ${JSON.stringify(fileName)}`,
+    fileName,
+    fileSize,
+  });
   const raw = await tauriApi.ffprobeBytes(bytes, fileName);
+  diag.info("probe", "ffprobe output", { raw: clipText(raw) });
   const metadata = parseFfprobeJson(raw, fileName, fileSize);
   diag.info("native-engine", "native probe complete", {
     fileName,
@@ -252,6 +268,12 @@ export async function nativeEncodeFile(options: NativeEncodeFileOptions): Promis
     ...(options.trimEnd !== undefined ? { trimEnd: options.trimEnd } : {}),
   });
 
+  diag.info("encode", "ffmpeg command", {
+    args: clipText(args.join(" ")),
+    outputPath: options.outputPath,
+    codec: options.codec,
+    crf: options.crf,
+  });
   const unlisten = await listen<{ requestId: string; progress: number }>("encode-progress", (event) => {
     if (event.payload.requestId === requestId) {
       options.onProgress?.(Math.max(0, Math.min(100, event.payload.progress)));
@@ -295,6 +317,14 @@ export async function nativeEncodeFile(options: NativeEncodeFileOptions): Promis
       args,
       logTail: result.log_tail.slice(-40),
     });
+    if (result.log_tail.length > 0) {
+      diag.error("encode", "ffmpeg console output (failure)", {
+        outputPath: options.outputPath,
+        exitCode: result.exit_code,
+        lines: result.log_tail.length,
+        console: clipText(result.log_tail.join("\n")),
+      });
+    }
     throw new Error(`ffmpeg exited with code ${result.exit_code}: ${result.log_tail.slice(-3).join(" | ")}`);
   }
 
@@ -303,6 +333,14 @@ export async function nativeEncodeFile(options: NativeEncodeFileOptions): Promis
     sizeBytes: result.size_bytes,
     durationMs: result.duration_ms,
   });
+  if (result.log_tail.length > 0) {
+    diag.info("encode", "ffmpeg console output (tail)", {
+      outputPath: options.outputPath,
+      exitCode: 0,
+      lines: result.log_tail.length,
+      console: clipText(result.log_tail.join("\n")),
+    });
+  }
 
   return {
     outputPath: options.outputPath,
@@ -386,6 +424,13 @@ export async function nativeEncode(options: NativeEncodeOptions): Promise<Native
     ...(options.trimEnd !== undefined ? { trimEnd: options.trimEnd } : {}),
   });
 
+  diag.info("encode", "ffmpeg command", {
+    args: clipText(args.join(" ")),
+    outputPath: paths.output_path,
+    outputFileName: options.outputFileName,
+    codec: options.codec,
+    crf: options.crf,
+  });
   const unlisten = await listen<{ requestId: string; progress: number }>("encode-progress", (event) => {
     if (event.payload.requestId === requestId) {
       options.onProgress?.(Math.max(0, Math.min(100, event.payload.progress)));
@@ -433,6 +478,14 @@ export async function nativeEncode(options: NativeEncodeOptions): Promise<Native
       args,
       logTail: result.log_tail.slice(-40),
     });
+    if (result.log_tail.length > 0) {
+      diag.error("encode", "ffmpeg console output (failure)", {
+        outputPath: paths.output_path,
+        exitCode: result.exit_code,
+        lines: result.log_tail.length,
+        console: clipText(result.log_tail.join("\n")),
+      });
+    }
     void invoke("cleanup_encode_dir", { path: tmpDir });
     throw new Error(`ffmpeg exited with code ${result.exit_code}: ${result.log_tail.slice(-3).join(" | ")}`);
   }
@@ -444,6 +497,14 @@ export async function nativeEncode(options: NativeEncodeOptions): Promise<Native
     sizeBytes: result.size_bytes,
     durationMs: result.duration_ms,
   });
+  if (result.log_tail.length > 0) {
+    diag.info("encode", "ffmpeg console output (tail)", {
+      outputPath: paths.output_path,
+      exitCode: 0,
+      lines: result.log_tail.length,
+      console: clipText(result.log_tail.join("\n")),
+    });
+  }
 
   return {
     data,

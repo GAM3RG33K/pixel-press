@@ -10,7 +10,7 @@ adaptive
 
 Semi-tech-aware mainstream users — people who understand what video compression is and how it saves disk space, and who want it to simply work. Not software engineers, not laymen: someone comfortable with desktop apps who shouldn't need to learn codec vocabulary (CRF, H.264 vs VP9, two-pass) to get a good result.
 
-Note: the distribution target is desktop (Tauri v2 shell), and the user recorded the platform as `adaptive`.
+Note: the distribution target is desktop (a native shell), and the user recorded the platform as `adaptive`.
 
 ## Product Purpose
 
@@ -28,7 +28,7 @@ Local-first and fully local after first install — a native desktop app where F
 
 ## Capabilities and Constraints
 
-- Native encode/probe via downloaded (SHA-256-verified) ffmpeg/ffprobe; no browser sandbox limits. Tauri native drops probe the real file path and encode in place (source untouched); huge files (>500 MB) get the same treatment — nothing is staged in memory before probe.
+- Native encode/probe via downloaded (SHA-256-verified) ffmpeg/ffprobe; no browser sandbox limits. Native drops probe the real file path and encode in place (source untouched); huge files (>500 MB) get the same treatment — nothing is staged in memory before probe.
 - Deterministic rule engine always available; optional local SmolLM2-360M (Apache-2.0) via native llama.cpp for intent → plan, opt-in from Settings → Local AI.
 - A bottom-center tray surfaces every in-flight task (encodes, first-launch downloads) with progress + cancel; leaving a flow never cancels running work.
 - Long filenames render as overflow-aware marquee (pause on hover/focus-within; `prefers-reduced-motion` falls back to ellipsis).
@@ -36,12 +36,13 @@ Local-first and fully local after first install — a native desktop app where F
 - Intent-first plan review: explicit tokens in plain-language intent (keep/.mkv, convert to mp4/webm, strip/keep audio, subtitles strip/keep/only-lang, trim, strip metadata) are applied as hard constraints on top of the AI or rule engine — user tokens always win. A read-only Plan review panel shows every parameter with provenance badges (● you / ● AI / ● rule / ● preset / ● default); Advanced user mode unlocks constrained editing, pins the output to one variant, and lets you save named presets (★ chips) alongside built-ins.
 - Model-required modal: intents that exceed rule-engine coverage with no local model ready block with a choice — download the model & encode (auto-starts when ready), or best-effort with the rule engine. Nothing is silently degraded.
 - Settings drawer gained **Backup**: export/import the whole app config as one versioned JSON (`pixel-press-config.json`, `schemaVersion: 1` — presets + AI/engine prefs + advanced-mode flag; no model weights, logs, history, or paths). Import auto-renames colliding presets and previews the diff before replacing anything. Desktop writes straight into ~/Downloads.
-- Consolidated `$APPDATA/cache` for all staging/probe/encode temp artifacts; Settings drawer shows live usage with a clear button (ffmpeg tools and LLM weights untouched).
+- Remaining-time estimates on every progress surface (tray, encode, folder bars, model download) — wall-clock linear projection, `estimating…` below 2%. Full technical trace in the downloadable diagnostics file: ffprobe command + raw output, full ffmpeg argv, console output on success and failure, and before/after comparison details per output.
+- Consolidated `$APPDATA/cache` for all staging/probe/encode temp artifacts; Settings drawer shows live usage with a clear button (ffmpeg tools and LLM weights untouched, clear gated by an awaited native confirmation dialog).
 - GPL/LGPL FFmpeg and Apache-2.0 LLM weights are first-run downloads, not bundled; notices ship (see THIRD_PARTY_NOTICES.md).
 - Built-in updater (Settings → Updates): checks for updates against the app's flavor release channel, downloads the new build, installs it in place, and restarts — VS Code-style self-update. Prod checks published prod releases on GitHub Releases; dev checks the dev-latest prerelease feed (served from `gam3rg33k.github.io/pixel-press/dev-latest.json`). No silent updates; explicit user action required.
 - Platform targets (distribution): GitHub Releases on tag push (`v*.*.*`) — macOS Apple Silicon + Intel, Linux x64/ARM64 (4 legs). `-dev`-suffixed tags ship the development flavor ("pixel-press Dev", `com.pixelpress.app.dev`) as a draft prerelease, installable alongside production. Windows not shipped (x64 release leg failing — excluded pending diagnosis; ARM64 paused: native LLM backend does not link on MSVC ARM64). macOS builds are ad-hoc signed (unsigned distribution — no Developer ID yet).
 - No bundling of FFmpeg or LLM weights in the installer; installer stays ~15–30MB.
-- PWA milestone is frozen at tag `v0.0.0-pwa-milestone`; the Tauri line is the product.
+- PWA milestone is frozen at tag `v0.0.0-pwa-milestone`; the native desktop line is the product.
 
 ## Brand Commitments
 
@@ -53,7 +54,7 @@ Local-first and fully local after first install — a native desktop app where F
 
 ## Evidence on Hand
 
-- Working app on `main` (Tauri v2 + React + Tailwind + shadcn/ui); PWA milestone preserved at tag `v0.0.0-pwa-milestone`.
+- Working app on `main` (Rust + React + Tailwind + shadcn/ui); PWA milestone preserved at tag `v0.0.0-pwa-milestone`.
 - Rule engine rules in `src/skills/compress-video-rules.ts`; LLM planner in `src-tauri/src/llm.rs`.
 - Test clips and a working sample pipeline (native ffprobe verification passes on this machine).
 - Docs/harness: `docs/harness/{decisions,open-questions,progress}.md`; brand assets in `docs/brand/`.

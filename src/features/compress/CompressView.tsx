@@ -8,6 +8,7 @@ import {
   FileAudio,
   FileVideo,
   Loader2,
+  Info,
   Play,
   Trash2,
   XCircle,
@@ -53,6 +54,9 @@ import { registerTask, updateTask, completeTask, failTask, cancelTask } from "@/
 import { fetchSampleClip } from "@/lib/sample";
 import { diag, captureError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
+import { etaFromProgress, formatRemaining } from "@/lib/format";
+import { logBeforeAfter } from "@/lib/compare-log";
+import { CompressionStat } from "@/components/compression-stat";
 
 interface OutputFile {
   label: string;
@@ -86,6 +90,7 @@ export function CompressView({
   >("idle");
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const encodeStartedAtRef = useRef<number | null>(null);
   const [outputs, setOutputs] = useState<OutputFile[]>([]);
   const [copied, setCopied] = useState<"html" | "jsx" | null>(null);
   const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
@@ -312,6 +317,7 @@ export function CompressView({
         ? Math.max(0.1, recipe.trimEnd - (recipe.trimStart ?? 0))
         : metadata.duration;
 
+    encodeStartedAtRef.current = Date.now();
     setStatus("encoding");
     setError(null);
     setProgress(0);
@@ -453,6 +459,22 @@ export function CompressView({
           );
         }
 
+        logBeforeAfter({
+          label: variant.label,
+          inputFileName: file.name,
+          inputBytes: sourceSizeRef.current ?? file.size,
+          outputBytes: encodedResult.data.byteLength,
+          codec: variant.codec,
+          requestedCodec: variant.requestedCodec,
+          crf: variant.crf,
+          container: variant.container,
+          encodeMs: encodedResult.durationMs,
+          metadata,
+          outputScale: variant.targetScale,
+          audioHandling: recipe.audioHandling,
+          subtitleHandling: recipe.subtitleHandling,
+          stripMetadata: recipe.stripMetadata,
+        });
         encoded.push({
           label: variant.label,
           fileName: encodedResult.outputFileName,
@@ -474,6 +496,15 @@ export function CompressView({
         });
       }
 
+      diag.info('compare', 'compress run summary', {
+        outputs: encoded.map((o) => ({ label: o.label, bytes: o.sizeBytes, container: o.container })),
+        totalInputBytes: metadata.fileSize * encoded.length,
+        totalOutputBytes: encoded.reduce((sum, o) => sum + o.sizeBytes, 0),
+        savedBytes: metadata.fileSize * encoded.length - encoded.reduce((sum, o) => sum + o.sizeBytes, 0),
+        outputCount: encoded.length,
+        codec: recipe.targetCodec,
+        crf: recipe.crf,
+      });
       setOutputs(encoded);
       setStatus("done");
     } catch (caught) {
@@ -752,6 +783,7 @@ export function CompressView({
               progress={progress}
               active={status === "encoding"}
               label={status === "encoding" ? "Encoding with native FFmpeg…" : status === "probing" ? "Probing with FFprobe…" : "Ready to encode"}
+              remainingSeconds={etaFromProgress(encodeStartedAtRef.current ?? undefined, status === "encoding" ? progress : undefined)}
             />
           </>
         ) : null}
@@ -783,31 +815,31 @@ export function CompressView({
           const inTotal = metadata ? metadata.fileSize * outputs.length : 0;
           const savedBytes = Math.max(0, inTotal - outTotal);
           const savedPct = inTotal > 0 ? Math.round((savedBytes / inTotal) * 100) : 0;
-          const inMb = inTotal / 1024 / 1024;
-          const outMb = outTotal / 1024 / 1024;
-          const barPct = inMb > 0 ? Math.max(2, Math.min(100, (outMb / inMb) * 100)) : 100;
+          const totalEncodeMs = outputs.reduce((sum, o) => sum + o.durationMs, 0);
+          const outDims = resolvedRecipe.targetScale ?? (metadata ? { width: metadata.width, height: metadata.height } : undefined);
+          const chips = [
+            resolvedRecipe.targetCodec.toUpperCase().replace("H265", "H.265").replace("H264", "H.264"),
+            `CRF ${resolvedRecipe.crf}`,
+            ...(resolvedRecipe.audioHandling === "strip" ? ["no audio"] : [resolvedRecipe.audioHandling === "copy" ? "audio copied" : "audio re-encoded"]),
+            ...(resolvedRecipe.subtitleHandling.mode === "strip"
+              ? ["no subs"]
+              : resolvedRecipe.subtitleHandling.mode === "only"
+                ? [`subs: ${resolvedRecipe.subtitleHandling.languages.join("+")}`]
+                : ["subs kept"]),
+            ...(outDims?.width ? [`${outDims.width}×${outDims.height}`] : []),
+            ...(totalEncodeMs > 0 ? [`${(totalEncodeMs / 1000).toFixed(1)}s encode`] : []),
+            ...(resolvedRecipe.stripMetadata ? ["metadata stripped"] : []),
+          ];
           return (
-            <div className="press-paper press-field rounded-2xl px-6 py-6 text-center" role="status">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-success">
-                Pressed
-              </p>
-              <p className="mt-2 text-[var(--text-hero)] font-semibold leading-none tracking-tighter text-foreground tabular-nums">
-                −{savedPct}
-                <span className="text-4xl align-top text-primary">%</span>
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {(savedBytes / 1024 / 1024).toFixed(1)} MB lighter · {outputs.length} output{outputs.length === 1 ? "" : "s"} · encoded on this device
-              </p>
-              <div className="mx-auto mt-4 max-w-md">
-                <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
-                  <span>Before {inMb.toFixed(1)} MB</span>
-                  <span>After {outMb.toFixed(1)} MB</span>
-                </div>
-                <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-secondary">
-                  <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${barPct}%` }} />
-                </div>
-              </div>
-            </div>
+            <CompressionStat
+              variant="hero"
+              tag="Pressed"
+              savedPct={savedPct}
+              inputBytes={inTotal}
+              outputBytes={outTotal}
+              chips={chips}
+              footnote={`${(savedBytes / 1024 / 1024).toFixed(1)} MB lighter · ${outputs.length} output${outputs.length === 1 ? "" : "s"} · encoded on this device`}
+            />
           );
         })() : null}
 
@@ -888,27 +920,37 @@ export function CompressView({
                   <p className="mt-2 text-xs text-destructive" role="alert">{qualityTrials.error}</p>
                 ) : null}
                 {qualityTrials.levels.length > 0 ? (
-                  <ul className="mt-3 divide-y divide-border/60 rounded-lg border border-border">
+                  <div className="mt-3 flex flex-col gap-2">
                     {qualityTrials.levels.map((level, index) => {
-                      const pct = metadata && metadata.fileSize > 0
-                        ? Math.round((level.bytes / metadata.fileSize) * 100)
-                        : null;
+                      const inputBytes = metadata?.fileSize ?? level.bytes;
+                      const savedPct = inputBytes > 0 ? Math.max(0, Math.round((1 - level.bytes / inputBytes) * 100)) : 0;
                       const isMiddle = index === Math.floor(qualityTrials.levels.length / 2);
+                      const codecLabel = resolvedRecipe.targetCodec === "h265" ? "H.265" : "H.264";
                       return (
-                        <li key={level.crf} className="flex items-center gap-3 px-3 py-2 text-xs">
-                          <span className="font-mono tabular-nums text-muted-foreground">CRF {level.crf}</span>
-                          <span className="min-w-0 flex-1 tabular-nums">
-                            {(level.bytes / 1024 / 1024).toFixed(1)} MB
-                            {pct !== null ? ` · ${pct}% of source` : ""}
-                            {isMiddle ? <span className="ml-2 rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">recommended</span> : null}
-                          </span>
-                          <Button size="sm" variant="ghost" onClick={() => download({ label: `CRF ${level.crf}`, fileName: level.fileName, sizeBytes: level.bytes, durationMs: 0, blob: level.blob, container: "mp4" })}>
-                            <ArrowDownToLine className="size-4" aria-hidden />
-                          </Button>
-                        </li>
+                        <CompressionStat
+                          key={level.crf}
+                          variant="row"
+                          tag={`CRF ${level.crf}`}
+                          savedPct={savedPct}
+                          inputBytes={inputBytes}
+                          outputBytes={level.bytes}
+                          chips={[`${codecLabel} · CRF ${level.crf}`, resolvedRecipe.audioHandling === "strip" ? "no audio" : "audio kept"]}
+                          {...(isMiddle ? { recommended: true } : {})}
+                          action={
+                            <Button size="sm" variant="ghost" aria-label={`Download CRF ${level.crf}`} onClick={() => download({ label: `CRF ${level.crf}`, fileName: level.fileName, sizeBytes: level.bytes, durationMs: 0, blob: level.blob, container: "mp4" })}>
+                              <ArrowDownToLine className="size-4" aria-hidden />
+                            </Button>
+                          }
+                        />
                       );
                     })}
-                  </ul>
+                  </div>
+                ) : null}
+                {qualityTrials.levels.length > 0 ? (
+                  <p className="mt-2 flex items-start gap-1.5 text-[10.5px] leading-snug text-muted-foreground">
+                    <Info className="mt-0.5 size-3.5 shrink-0 text-info" aria-hidden />
+                    <span>{recommendationNote(qualityTrials.levels, metadata?.fileSize ?? 0)}</span>
+                  </p>
                 ) : null}
               </div>
             ) : null}
@@ -1005,12 +1047,26 @@ export function CompressView({
   );
 }
 
-function ProgressBar({ progress, active, label }: { progress: number; active: boolean; label: string }) {
+function recommendationNote(levels: { crf: number; bytes: number }[], sourceBytes: number): string {
+  if (levels.length === 0) return "";
+  const middle = Math.floor(levels.length / 2);
+  const rec = levels[middle];
+  if (!rec) return "";
+  const lower = levels[0];
+  const higher = levels[levels.length - 1];
+  const savedVsSource = sourceBytes > 0 ? Math.max(0, Math.round((1 - rec.bytes / sourceBytes) * 100)) : null;
+  const sizeWord = savedVsSource !== null ? `, ${savedVsSource}% smaller than the source` : "";
+  return `Recommended: CRF ${rec.crf} — the middle of your three-level ladder (CRF ${lower?.crf} / ${rec.crf} / ${higher?.crf}). It is the best size-per-quality trade of the three: visibly tighter than CRF ${lower?.crf}${sizeWord}, and cleaner than CRF ${higher?.crf}. Nothing about it uploads — it is a deterministic pick from your own plan, not an AI guess.`;
+}
+
+function ProgressBar({ progress, active, label, remainingSeconds }: { progress: number; active: boolean; label: string; remainingSeconds?: number | null }) {
   return (
     <div className="press-paper rounded-xl p-4">
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs text-muted-foreground">{label}</span>
-        <span className="text-xs tabular-nums text-muted-foreground">{Math.round(progress)}%</span>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {active ? `${formatRemaining(remainingSeconds ?? null)} · ` : ""}{Math.round(progress)}%
+        </span>
       </div>
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary">
         <div

@@ -329,7 +329,21 @@ function CacheSection() {
   }, []);
   useEffect(() => { void load(); }, [load]);
   const onClear = useCallback(async () => {
-    if (!window.confirm("Clear cache? This removes staged input copies and probe/encode temp files. Downloaded tools and the AI model are not affected.")) return;
+    // NOTE: window.confirm() does NOT block in the Tauri webview — it pops a
+    // native dialog but returns truthy immediately, so the cache would be wiped
+    // before the user clicks anything. Use the awaited native dialog plugin in
+    // the desktop app; plain confirm is fine in a browser.
+    const ok = isTauri()
+      ? await import("@tauri-apps/plugin-dialog").then(({ confirm }) =>
+          confirm(
+            "This removes staged input copies and probe/encode temp files. Downloaded tools and the AI model are not affected.",
+            { title: "Clear cache?", kind: "warning" },
+          ),
+        )
+      : window.confirm(
+          "Clear cache? This removes staged input copies and probe/encode temp files. Downloaded tools and the AI model are not affected.",
+        );
+    if (!ok) return;
     setClearing(true);
     try { await clearCache(); await load(); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
