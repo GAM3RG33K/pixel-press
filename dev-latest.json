@@ -1,47 +1,47 @@
 {
-  "version": "0.1.7",
+  "version": "0.1.8",
   "notes": "**pixel-press** — local-first video compression for the web. Nothing uploads; everything runs on your machine.\n\nFirst launch downloads FFmpeg/FFprobe and (optionally) a ~270 MB on-device LLM — SHA-256-verified, installed into your app data directory. The app then works fully offline. No accounts, no telemetry.\n\n> Ad-hoc signed for Apple Silicon (no Developer ID yet) — macOS Gatekeeper still blocks on first open: right-click → Open, or System Settings → Privacy & Security → Open Anyway.\n\n| Platform | Asset | Requirements |\n| --- | --- | --- |\n| macOS Apple Silicon | `*_aarch64.dmg` | macOS 11+ on Apple Silicon |\n| macOS Intel | `*_x64.dmg` | macOS 10.15+ on Intel |\n| Linux x64 | `*_amd64.AppImage` or `*_amd64.deb` | glibc ≥ 2.31, WebKitGTK 4.1 |\n| Linux ARM64 | `*_arm64.AppImage` or `*_arm64.deb` | Raspberry Pi OS / Ubuntu ARM64 |\n\n`setup-manifest.json` lists SHA-256 + size + source for the FFmpeg/FFprobe/LLM artifacts downloaded on first launch.\n\npixel-press is MIT-licensed. FFmpeg/FFprobe are separate GPL/LGPL binaries downloaded by you at first launch; LLM weights (SmolLM2-360M, Apache-2.0) likewise. See `THIRD_PARTY_NOTICES.md`.\n\n> **Flavors:** tags containing `-dev` (e.g. `v0.1.0-dev`) produce the development flavor — **\"pixel-press Dev\"** (`com.pixelpress.app.dev`) — marked as a prerelease. It installs side-by-side with production and never overrides it. Plain tags produce the production build.",
-  "pub_date": "2026-11-13T15:05:41.871Z",
+  "pub_date": "2026-11-14T12:28:02.518Z",
   "platforms": {
-    "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR012cG9NK2pYcEl1Uk0xZmFZUGtrcnV6YUZFN1ZyTWc2MGVxcWs1UXlaeEZaTkV1dFZqbWsybnB5ZjZ5bkc2Q3NvN281bE1Mc2NiekJhT3BodEorYXcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTgyMTMxCWZpbGU6cGl4ZWwtcHJlc3MgRGV2XzAuMS43X2FtZDY0LkFwcEltYWdlCXZlcnNpb246MC4xLjcKNm9QdFYwejBndWZoV2I4MmFzWHI2YkVZcExYNThWUGFweGhyRXhVekFoRjVPN0Z2N0FYVDVFRTdmVElCYzhtN1JwWUtyQlZkdlhoSEZtZElFdWNoQ1E9PQo=",
-      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/744062475"
-    },
-    "linux-x86_64-appimage": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR012cG9NK2pYcEl1Uk0xZmFZUGtrcnV6YUZFN1ZyTWc2MGVxcWs1UXlaeEZaTkV1dFZqbWsybnB5ZjZ5bkc2Q3NvN281bE1Mc2NiekJhT3BodEorYXcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTgyMTMxCWZpbGU6cGl4ZWwtcHJlc3MgRGV2XzAuMS43X2FtZDY0LkFwcEltYWdlCXZlcnNpb246MC4xLjcKNm9QdFYwejBndWZoV2I4MmFzWHI2YkVZcExYNThWUGFweGhyRXhVekFoRjVPN0Z2N0FYVDVFRTdmVElCYzhtN1JwWUtyQlZkdlhoSEZtZElFdWNoQ1E9PQo=",
-      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/744062475"
-    },
-    "linux-x86_64-deb": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR0NETUo2S1F5RFVpbC95Rnp5cHZwNjE2OHppUStTQlNaeEo1cUNPT2hOZlVxYXpXdytONHVsUys0R203L1JJczFtdGxVamJ2TlVTWWxSdFQ4eFRGV1E4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTgyMTMxCWZpbGU6cGl4ZWwtcHJlc3MgRGV2XzAuMS43X2FtZDY0LmRlYgl2ZXJzaW9uOjAuMS43ClYrODF0WjIrdVAxbkNKNU94amVVWHduWDdwSmprUlRsREV3TkRUNkszUmt3Z09XRXMvWXMyMnR5NmdaRHZuUFpsd3lmb3VONjgxVzBOU1BtMmVZVER3PT0K",
-      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/744062375"
-    },
-    "linux-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR1AzbXhhdk5ydzBnR1NTNkFTQ0RaTEl3YjF5OGMzeDBqY2s4b1pVMVl1MDREekV0d1B0ai9iQWMvYUV1SGNvOFVyWUtEK2lZUFBndjZvd3NJMm42UEE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTgyMTkyCWZpbGU6cGl4ZWwtcHJlc3MgRGV2XzAuMS43X2FhcmNoNjQuQXBwSW1hZ2UJdmVyc2lvbjowLjEuNwpETzNnTlhSVm5NTWtQR3RqOFlVOG1tekhpeDVsQkw2bUJNNGF0MDZ0UkwzRlJNOWFBd2ZJaC92c2VJZlNOeCsrUTJjZlpnUm0vdHZwUStQS3pwQlVEUT09Cg==",
-      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/744065578"
-    },
-    "linux-aarch64-appimage": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR1AzbXhhdk5ydzBnR1NTNkFTQ0RaTEl3YjF5OGMzeDBqY2s4b1pVMVl1MDREekV0d1B0ai9iQWMvYUV1SGNvOFVyWUtEK2lZUFBndjZvd3NJMm42UEE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTgyMTkyCWZpbGU6cGl4ZWwtcHJlc3MgRGV2XzAuMS43X2FhcmNoNjQuQXBwSW1hZ2UJdmVyc2lvbjowLjEuNwpETzNnTlhSVm5NTWtQR3RqOFlVOG1tekhpeDVsQkw2bUJNNGF0MDZ0UkwzRlJNOWFBd2ZJaC92c2VJZlNOeCsrUTJjZlpnUm0vdHZwUStQS3pwQlVEUT09Cg==",
-      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/744065578"
-    },
-    "linux-aarch64-deb": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR0FpajV3N3hic1h2Vlc1ejI4YjVOV09vbU5iOTd4RUZITXByWUxJeUIvMVphdUhzc0ZWbzVSeGxuczJNZk1LbDBMMGkzUUtCU3BHZHhRZ2piV2djTmdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTgyMTkyCWZpbGU6cGl4ZWwtcHJlc3MgRGV2XzAuMS43X2FybTY0LmRlYgl2ZXJzaW9uOjAuMS43CmN3cC9MOUV6RkZINXBoOWNuZXZhYmRXVW9CU0UxV2pLQzlpUk04YjVJNUlwQzB6MnJvem53eS9ZNi9RZDhybVYrUVRZSFdDQ1kyUlRxTGlJZHdmNEFnPT0K",
-      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/744065368"
-    },
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR0hsMkFnUnZEcVlwbi9hUmlUT0MyVkpkVVRGSDNCTHhOSmYrc1FPcktHUVoxWnFuMEpjbGxNNlErYmJVVXhrK056c01MWlgwQ0tTSnJSS1JjRlZBYVF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTgyMjgyCWZpbGU6cGl4ZWwtcHJlc3MgRGV2LmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuNwo4U0s5NjBaR1lOUkMydGlsbmRQUkFWeUwyQjhFZ3VjaEp6cUY2dnIxNEVycXlGbjRkd2lTUmpnYnZlVjFBRG1rR3FXSjNMYTBqWmVnMS9NRDJHQzVDZz09Cg==",
-      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/744070458"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR0tTU2xoWVl1blRLR2o1VnlBdWlTR0p6ZEtIbzc1REF0MTBVWHpCeEFQL0NFRGJDeUNSMysxSVRCVFdNeEVyTW5lckNObHkwWExUd3lSV083eTY4OUFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjU5MDk5CWZpbGU6cGl4ZWwtcHJlc3MgRGV2LmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuOApVWGtzVDUxVE1aQWFPSnJJcldvZHBHYktWZWM4NndMNTRmejlUQ0dGa044cjF6TzBidmNtUmZNUG5MN3hFQ2laNjNjV09wOEdXTzlGclM3cTFFTUdBdz09Cg==",
+      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/747413736"
     },
     "darwin-aarch64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR0hsMkFnUnZEcVlwbi9hUmlUT0MyVkpkVVRGSDNCTHhOSmYrc1FPcktHUVoxWnFuMEpjbGxNNlErYmJVVXhrK056c01MWlgwQ0tTSnJSS1JjRlZBYVF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTgyMjgyCWZpbGU6cGl4ZWwtcHJlc3MgRGV2LmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuNwo4U0s5NjBaR1lOUkMydGlsbmRQUkFWeUwyQjhFZ3VjaEp6cUY2dnIxNEVycXlGbjRkd2lTUmpnYnZlVjFBRG1rR3FXSjNMYTBqWmVnMS9NRDJHQzVDZz09Cg==",
-      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/744070458"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR0tTU2xoWVl1blRLR2o1VnlBdWlTR0p6ZEtIbzc1REF0MTBVWHpCeEFQL0NFRGJDeUNSMysxSVRCVFdNeEVyTW5lckNObHkwWExUd3lSV083eTY4OUFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjU5MDk5CWZpbGU6cGl4ZWwtcHJlc3MgRGV2LmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuOApVWGtzVDUxVE1aQWFPSnJJcldvZHBHYktWZWM4NndMNTRmejlUQ0dGa044cjF6TzBidmNtUmZNUG5MN3hFQ2laNjNjV09wOEdXTzlGclM3cTFFTUdBdz09Cg==",
+      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/747413736"
+    },
+    "linux-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR0JlSWpvdUQzRnVoQy96enh6bUdkd3Vkb1VheDhqSVV5TkliS2JoYW5kOFRXK3BiQ0VWTkt5N3FaZ0lVZHh0NElaUjdMMDVUZGx6bDgzaWRQemlXR3dJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjU5MTQ3CWZpbGU6cGl4ZWwtcHJlc3MgRGV2XzAuMS44X2FhcmNoNjQuQXBwSW1hZ2UJdmVyc2lvbjowLjEuOApRams5dUQ2ckpObmhXcFljSkh1Rmo2aVBESndvUWd1SFlDMGNCcVZ2QXdnWVZMc0xmSjFtdis5eVUwWCs5R01jZVBwSjdlaDlzUHIxd3RlaVNFSTZEQT09Cg==",
+      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/747416249"
+    },
+    "linux-aarch64-appimage": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR0JlSWpvdUQzRnVoQy96enh6bUdkd3Vkb1VheDhqSVV5TkliS2JoYW5kOFRXK3BiQ0VWTkt5N3FaZ0lVZHh0NElaUjdMMDVUZGx6bDgzaWRQemlXR3dJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjU5MTQ3CWZpbGU6cGl4ZWwtcHJlc3MgRGV2XzAuMS44X2FhcmNoNjQuQXBwSW1hZ2UJdmVyc2lvbjowLjEuOApRams5dUQ2ckpObmhXcFljSkh1Rmo2aVBESndvUWd1SFlDMGNCcVZ2QXdnWVZMc0xmSjFtdis5eVUwWCs5R01jZVBwSjdlaDlzUHIxd3RlaVNFSTZEQT09Cg==",
+      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/747416249"
+    },
+    "linux-aarch64-deb": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR0VnaDVjdkFReGx0OHVQQ1VSYkJHVEMwK1FzdkRNN0VTVE5ZSE9FZklNVElYSzcrZzdrTHArZXZLT2JSTkI0ZWVObTQvMDhiWXRRUm5GQWhQWkJydHdvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjU5MTQ3CWZpbGU6cGl4ZWwtcHJlc3MgRGV2XzAuMS44X2FybTY0LmRlYgl2ZXJzaW9uOjAuMS44CnJNOVpvc3RsN1M3WXh1ZmgwZjcvMjkyWEtoVzVBbWNXVzZkNFRYU1VFcnBvNDkzYThzMnZjVjRoaUVCWFFZdjhmcmhpTnNKQ2p2aUJaSlM3NWJJOUJRPT0K",
+      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/747416140"
+    },
+    "linux-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR0xpbVA3QTFpR05UUTdIRTYxQXZZREx0VERtL3pTSHk3OFZkZDRkVjJ6V2JWS1REblJLbUpabndvcUIwWTBmeUxRazhNSndhMWtzckxEdmp2Q2J6OGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjU5MjczCWZpbGU6cGl4ZWwtcHJlc3MgRGV2XzAuMS44X2FtZDY0LkFwcEltYWdlCXZlcnNpb246MC4xLjgKNWZFL0pDSjhiVXNyM0hpL2tDcXV5QjVOMEp5OHFkMlg0K21PZ3dNbVAxUzRaNHVXNWlKRlNiaFZDTm5GbmRaL3lxeHBReVBvMUt5cWZBTzFhSFJGQmc9PQo=",
+      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/747422576"
+    },
+    "linux-x86_64-appimage": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR0xpbVA3QTFpR05UUTdIRTYxQXZZREx0VERtL3pTSHk3OFZkZDRkVjJ6V2JWS1REblJLbUpabndvcUIwWTBmeUxRazhNSndhMWtzckxEdmp2Q2J6OGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjU5MjczCWZpbGU6cGl4ZWwtcHJlc3MgRGV2XzAuMS44X2FtZDY0LkFwcEltYWdlCXZlcnNpb246MC4xLjgKNWZFL0pDSjhiVXNyM0hpL2tDcXV5QjVOMEp5OHFkMlg0K21PZ3dNbVAxUzRaNHVXNWlKRlNiaFZDTm5GbmRaL3lxeHBReVBvMUt5cWZBTzFhSFJGQmc9PQo=",
+      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/747422576"
+    },
+    "linux-x86_64-deb": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR0xiRWNnZDAwWHd1U2N6cVMvQmZ4bTlCL2FEckk3NmR3eW9EN1I3amVlQ3EySmRYbmIyclMvYURxeERLQTZNbzgwZFlVUWVHQ2tTYnFZTk9ISmk0ZFFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjU5MjczCWZpbGU6cGl4ZWwtcHJlc3MgRGV2XzAuMS44X2FtZDY0LmRlYgl2ZXJzaW9uOjAuMS44Cng4WmFvaVMza01kM0dldUNTa29ralJJUGRMeWdzTkVIN1dPZFdtTmpVc293ZDdmdThmZ0hqaFZQdUxlemVCcy9Zd05XWUkvZHFmSmdydGN1UnJ0ZEFBPT0K",
+      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/747422480"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR095MXViYURXQnBLNU5wZWdjd1RqUStCYkNsNitmaVhhSmVGdkZEZk1kYkZIVDByRnlaSUxWcUhTVmxNQnFFcnBUZURPZDdJeW41blFoa2tpUFNuYkFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTgyMzM3CWZpbGU6cGl4ZWwtcHJlc3MgRGV2LmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuNwpMUlJYdENwTVVLaWs5Qkt3V3BwTzJiZWdkYU44VnVXSEdNR2xZeDAwazVva1pnbk9wcGNIMkwrczlDQ05BaTczeW05WnR1eVJTell1TmVneDg1endCUT09Cg==",
-      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/744073199"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR0d6L05SZmhXTVhMeEZxUDlKTzVjVnU1bzZMemh2RmVqUVJCYk5kOHN2MFUwUlNKdDRGNXFtUEpUVkpIZEtkdU5sNFA2S1I1dldNd09zYXR4bDdsYXdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjU5Mjc3CWZpbGU6cGl4ZWwtcHJlc3MgRGV2LmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuOApVa25qZy93akpHZUJpUjNCZzhhc3o4OUdUQUUzWFFMQ01nL3M2S0daSlo5ZHp6SUJUMGVGTitDWkRVKzRocndrb25hNVh0djMwOTFZNHRnOS94SGlEUT09Cg==",
+      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/747422836"
     },
     "darwin-x86_64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR095MXViYURXQnBLNU5wZWdjd1RqUStCYkNsNitmaVhhSmVGdkZEZk1kYkZIVDByRnlaSUxWcUhTVmxNQnFFcnBUZURPZDdJeW41blFoa2tpUFNuYkFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTgyMzM3CWZpbGU6cGl4ZWwtcHJlc3MgRGV2LmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuNwpMUlJYdENwTVVLaWs5Qkt3V3BwTzJiZWdkYU44VnVXSEdNR2xZeDAwazVva1pnbk9wcGNIMkwrczlDQ05BaTczeW05WnR1eVJTell1TmVneDg1endCUT09Cg==",
-      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/744073199"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVScW9vYlZxRzkzR0d6L05SZmhXTVhMeEZxUDlKTzVjVnU1bzZMemh2RmVqUVJCYk5kOHN2MFUwUlNKdDRGNXFtUEpUVkpIZEtkdU5sNFA2S1I1dldNd09zYXR4bDdsYXdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjU5Mjc3CWZpbGU6cGl4ZWwtcHJlc3MgRGV2LmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuOApVa25qZy93akpHZUJpUjNCZzhhc3o4OUdUQUUzWFFMQ01nL3M2S0daSlo5ZHp6SUJUMGVGTitDWkRVKzRocndrb25hNVh0djMwOTFZNHRnOS94SGlEUT09Cg==",
+      "url": "https://api.github.com/repos/GAM3RG33K/pixel-press/releases/assets/747422836"
     }
   }
 }
